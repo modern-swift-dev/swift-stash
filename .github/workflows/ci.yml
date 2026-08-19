@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        swift-version: ["6.0", "6.3"]
+    container: swift:${{ matrix.swift-version }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify Swift ${{ matrix.swift-version }}
+        run: swift --version | grep -F "Swift version ${{ matrix.swift-version }}"
+      - name: Release tests
+        run: swift test -c release
+
+  apple:
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+          - platform: iOS
+            simulator-name: iPhone 17 Pro
+            runtime-platform: iOS
+          - platform: tvOS
+            simulator-name: Apple TV 4K (3rd generation)
+            runtime-platform: tvOS
+          - platform: visionOS
+            simulator-name: Apple Vision Pro
+            runtime-platform: visionOS
+          - platform: watchOS
+            simulator-name: Apple Watch Series 11 (46mm)
+            runtime-platform: watchOS
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify Xcode 26.6 and Swift 6.3
+        run: |
+          xcodebuild -version | grep -F 'Xcode 26.6'
+          swift --version | grep -F 'Swift version 6.3'
+      - name: Ensure ${{ matrix.simulator-name }} simulator exists
+        id: simulator
+        if: matrix.platform != 'macOS'
+        env:
+          SIMULATOR_NAME: ${{ matrix.simulator-name }}
+          RUNTIME_PLATFORM: ${{ matrix.runtime-platform }}
+        run: |
+          device_type_identifier="$(
+            xcrun simctl list devicetypes --json |
+              jq -er --arg name "$SIMULATOR_NAME" \
+                'first(.devicetypes[] | select(.name == $name) | .identifier)'
+          )"
+          runtime_identifier="$(
+            xcrun simctl list runtimes available --json |
+              jq -er --arg platform "$RUNTIME_PLATFORM" '
+                [
+                  .runtimes[]
+                  | select(.name | startswith($platform + " "))
+                ]
+                | sort_by(.version | split(".") | map(tonumber))
+                | last
+                | .identifier
+              '
+          )"
+
+          if device_identifier="$(
+            xcrun simctl list devices available --json |
+              jq -er \
+                --arg name "$SIMULATOR_NAME" \
+                --arg runtime "$runtime_identifier" \
+                'first(.devices[$runtime][] | select(.name == $name) | .udid)'
+          )"; then
+            echo "Using existing $SIMULATOR_NAME ($device_identifier)"
+          else
+            device_identifier="$(xcrun simctl create \
+              "$SIMULATOR_NAME" \
+              "$device_type_identifier" \
+              "$runtime_identifier")"
+          fi
+
+          echo "device-id=$device_identifier" >> "$GITHUB_OUTPUT"
+      - name: Test on ${{ matrix.platform }}
+        env:
+          SIMULATOR_ID: ${{ steps.simulator.outputs.device-id }}
+        run: |
+          if [ '${{ matrix.platform }}' = 'macOS' ]; then
+            destination='platform=macOS'
+          else
+            destination="id=$SIMULATOR_ID"
+          fi
+
+          xcodebuild test -scheme SwiftStash -destination "$destination"

@@ -1,0 +1,10 @@
+pre-commit:
+  jobs:
+    - name: format Swift files
+      glob: "*.swift"
+      run: mint run --no-install nicklockwood/SwiftFormat {staged_files} --config .swiftformat --quiet
+      stage_fixed: true
+
+    - name: lint Swift files
+      glob: "*.swift"
+      run: mint run --no-install realm/SwiftLint {staged_files} --config .swiftlint.yml --quiet
