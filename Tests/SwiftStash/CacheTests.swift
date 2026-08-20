@@ -4,7 +4,7 @@ import Testing
 
 /// Helper extension for testing subscript setter
 extension Cache {
-    func setSubscript(key: String, value: CacheType?) {
+    func setSubscript(key: KeyType, value: CacheType?) {
         self[key] = value
     }
 }
@@ -29,13 +29,24 @@ extension Cache {
         }
     }
 
+    private enum TestKey: String, CacheKey, CaseIterable {
+        case first
+        case second
+        case third
+    }
+
+    private struct KeyedTestItem: Sendable, Identifiable, Equatable {
+        let id: TestKey
+        let value: String
+    }
+
     init() {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
     }
 
     @Test func fifoEvictionByThreshold() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage)
 
         // Add items individually
@@ -56,7 +67,7 @@ extension Cache {
 
     @Test func fifoEvictionByCount() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage)
 
         // Add items individually
@@ -81,7 +92,7 @@ extension Cache {
 
     @Test func lifoEvictionByThreshold() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage)
 
         // Add first two items
@@ -103,7 +114,7 @@ extension Cache {
 
     @Test func lifoEvictionByCount() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lifo(threshold: 15.0), storagePolicy: storage)
 
         // Add items individually
@@ -128,7 +139,7 @@ extension Cache {
 
     @Test func lruEvictionByThreshold() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 15.0), storagePolicy: storage)
 
         // Add items individually
@@ -153,7 +164,7 @@ extension Cache {
 
     @Test func lruEvictionByCount() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 15.0), storagePolicy: storage)
 
         // Add items individually
@@ -184,7 +195,7 @@ extension Cache {
 
     @Test func keysReturnsAllKeys() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "a", value: "first"), for: "a")
@@ -197,7 +208,7 @@ extension Cache {
 
     @Test func valuesReturnsAllValuesAndUpdatesAccess() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
@@ -211,7 +222,7 @@ extension Cache {
 
     @Test func entryReturnsEntryAndUpdatesAccess() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
@@ -224,7 +235,7 @@ extension Cache {
 
     @Test func entryReturnsNilForMissingKey() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         let entry = await cache.entry(for: "nonexistent")
@@ -233,7 +244,7 @@ extension Cache {
 
     @Test func removeDeletesEntry() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
@@ -252,7 +263,7 @@ extension Cache {
 
     @Test func removeNonexistentKeyDoesNothing() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
@@ -264,7 +275,7 @@ extension Cache {
 
     @Test func clearRemovesAllEntries() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
@@ -283,7 +294,7 @@ extension Cache {
 
     @Test func batchAddMultipleValues() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add([
@@ -305,7 +316,7 @@ extension Cache {
 
     @Test func subscriptSetterAddsValue() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.setSubscript(key: "myKey", value: TestItem(id: "myKey", value: "myValue"))
@@ -316,7 +327,7 @@ extension Cache {
 
     @Test func subscriptSetterWithNilRemovesValue() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
@@ -332,7 +343,7 @@ extension Cache {
 
     @Test func evictUntilZeroClearsCache() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
@@ -347,7 +358,7 @@ extension Cache {
 
     @Test func evictUntilWhenUnderMaxReturnsCount() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
@@ -362,7 +373,7 @@ extension Cache {
 
     @Test func addIdentifiableUsesIdAsKey() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage)
 
         let item = TestItem(id: "myId", value: "myValue")
@@ -373,11 +384,66 @@ extension Cache {
         #expect(retrieved?.value == "myValue")
     }
 
+    // MARK: - Typed Key Tests
+
+    @Test func enumKeyOperationsUseTheDeclaredKeyType() async {
+        let storage = MemoryStorageEngine<TestKey, TestItem>()
+        let cache = await Cache(storagePolicy: storage)
+
+        await cache.add([
+            (.first, TestItem(id: "1", value: "first")),
+            (.second, TestItem(id: "2", value: "second"))
+        ])
+        await cache.setSubscript(key: .third, value: TestItem(id: "3", value: "third"))
+
+        let keys = await cache.keys()
+        let entry = await cache.entry(for: .first)
+        let third = await cache[.third]
+
+        #expect(Set(keys) == Set(TestKey.allCases))
+        #expect(entry?.key == .first)
+        #expect(entry?.value.value == "first")
+        #expect(third?.value == "third")
+
+        await cache.remove(.second)
+        await cache.setSubscript(key: .third, value: nil)
+
+        #expect(await cache[.second] == nil)
+        #expect(await cache[.third] == nil)
+        #expect(await cache.keys() == [.first])
+    }
+
+    @Test func enumKeyParticipatesInEviction() async {
+        let storage = MemoryStorageEngine<TestKey, TestItem>()
+        let cache = await Cache(policy: .fifo(threshold: 300), storagePolicy: storage)
+
+        await cache.add(TestItem(id: "1", value: "first"), for: .first)
+        MonotonicClock.shared.tick(seconds: 1)
+        await cache.add(TestItem(id: "2", value: "second"), for: .second)
+
+        let remaining = await cache.evictUntil(maxNbItems: 1)
+
+        #expect(remaining == 1)
+        #expect(await cache[.first] == nil)
+        #expect(await cache[.second]?.value == "second")
+    }
+
+    @Test func identifiableValueUsesMatchingEnumId() async {
+        let storage = MemoryStorageEngine<TestKey, KeyedTestItem>()
+        let cache = await Cache(storagePolicy: storage)
+        let item = KeyedTestItem(id: .second, value: "value")
+
+        let entry = await cache.add(item)
+
+        #expect(entry.key == .second)
+        #expect(await cache[.second] == item)
+    }
+
     // MARK: - LIFO Threshold Test (Corrected)
 
     @Test func lifoEvictionByThresholdCorrect() async {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
-        let storage = MemoryStorageEngine<TestItem>()
+        let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lifo(threshold: 15.0), storagePolicy: storage)
 
         // Add first two items

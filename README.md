@@ -39,7 +39,7 @@ Use a tagged version requirement instead of `branch` once the version you want i
 ```swift
 import SwiftStash
 
-let storage = MemoryStorageEngine<String>()
+let storage = MemoryStorageEngine<String, String>()
 let cache = await Cache(
     policy: .lru(threshold: 5 * 60),
     storagePolicy: storage
@@ -56,6 +56,23 @@ await cache.evictUntil(maxNbItems: 100)
 
 `Cache` is an actor, so calls from outside its isolation domain use `await`. Values stored in a cache must be `Sendable`.
 
+Each cache has one key type. Use a string-backed enum when the set of keys is known:
+
+```swift
+enum ProfileKey: String, CacheKey {
+    case current
+    case selected
+}
+
+let storage = MemoryStorageEngine<ProfileKey, Profile>()
+let cache = await Cache(storagePolicy: storage)
+
+await cache.add(profile, for: .current)
+let currentProfile = await cache[.current]
+```
+
+`String` also conforms to `CacheKey`. A custom key can conform by providing a lossless `stringValue` representation and `init?(stringValue:)`.
+
 ## Storage engines
 
 `MemoryStorageEngine` gives the cache no persistent backing. Values remain in the `Cache` actor until they are removed or the cache is released.
@@ -65,6 +82,7 @@ await cache.evictUntil(maxNbItems: 100)
 ```swift
 let storage = DiskStorageEngine(
     directory: "profiles",
+    keyType: ProfileKey.self,
     serializer: JsonDiskStorageSerializer<Profile>()
 )
 let cache = await Cache(storagePolicy: storage)

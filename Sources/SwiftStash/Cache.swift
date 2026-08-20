@@ -23,11 +23,17 @@ public typealias CacheableDataType = Sendable
 ///
 /// Example usage:
 /// ```swift
-/// let cache = Cache(policy: .lru(threshold: 300), storagePolicy: MemoryStorageEngine())
+/// let cache = Cache(
+///     policy: .lru(threshold: 300),
+///     storagePolicy: MemoryStorageEngine<String, String>()
+/// )
 /// await cache.add("value", for: "key")
 /// let value = await cache["key"]
 /// ```
 public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataType> where StorageEngineType.StoredType == CacheType {
+
+    /// The type used to identify entries in this cache.
+    public typealias KeyType = StorageEngineType.KeyType
 
     /// The order used to evict entries from the cache.
     public enum EvictionPolicy {
@@ -66,7 +72,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     private let policy: EvictionPolicy
 
     /// The Entries
-    private var entries: [String: CacheEntry<CacheType>] = [:]
+    private var entries: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
 
     /// Creates a cache and loads any entries provided by its storage engine.
     ///
@@ -89,7 +95,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Returns all keys currently held by the cache.
     ///
     /// - Returns: An unordered array of cache keys.
-    public func keys() -> [String] {
+    public func keys() -> [KeyType] {
         Array(entries.keys)
     }
 
@@ -112,7 +118,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///
     /// - Parameter key: The key identifying the entry.
     /// - Returns: The matching cache entry, or `nil` when the key is not present.
-    public func entry(for key: String) -> CacheEntry<CacheType>? {
+    public func entry(for key: KeyType) -> CacheEntry<KeyType, CacheType>? {
         var entry = entries[key]
         entry?.updateLastAccess()
         entries[key] = entry
@@ -124,7 +130,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// All entries in the batch receive the same creation and last-access time.
     ///
     /// - Parameter values: Key-value pairs to add. An existing entry with the same key is replaced.
-    public func add(_ values: [(String, CacheType)]) {
+    public func add(_ values: [(KeyType, CacheType)]) {
         let creation = Date.monotonic
         for value in values {
             let entry = CacheEntry(key: value.0, value: value.1, creation: creation, lastAccess: creation)
@@ -141,7 +147,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///   - value: The value to cache.
     ///   - key: The key used to retrieve the value.
     /// - Returns: The cache entry created for the value.
-    @discardableResult public func add(_ value: CacheType, for key: String) -> CacheEntry<CacheType> {
+    @discardableResult public func add(_ value: CacheType, for key: KeyType) -> CacheEntry<KeyType, CacheType> {
         let entry = CacheEntry(key: key, value: value)
         entries[key] = entry
         storageEngine.persist(entry)
@@ -151,7 +157,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Removes the entry for a key from the cache and its storage engine.
     ///
     /// - Parameter key: The key of the entry to remove. A missing key has no effect.
-    public func remove(_ key: String) {
+    public func remove(_ key: KeyType) {
         if let entry = entries.removeValue(forKey: key) {
             storageEngine.delete(entry)
         }
@@ -164,7 +170,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///
     /// - Parameter key: The key of the entry to access.
     /// - Returns: The cached value, or `nil` if the key is not present.
-    public subscript(key: String) -> CacheType? {
+    public subscript(key: KeyType) -> CacheType? {
         get {
             guard var entry = entries[key] else {
                 return nil
@@ -197,7 +203,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         switch policy {
             case let .fifo(threshold):
                 let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<CacheType>] = entries.values.sorted { $0.creation < $1.creation }
+                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.creation < $1.creation }
                 for value in values where value.creation <= deletionDate {
                     if let entry = entries.removeValue(forKey: value.key) {
                         storageEngine.delete(entry)
@@ -205,7 +211,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
                 }
             case let .lifo(threshold):
                 let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<CacheType>] = entries.values.sorted { $0.creation > $1.creation }
+                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.creation > $1.creation }
                 for value in values where value.creation <= deletionDate {
                     if let entry = entries.removeValue(forKey: value.key) {
                         storageEngine.delete(entry)
@@ -213,7 +219,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
                 }
             case let .lru(threshold):
                 let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<CacheType>] = entries.values.sorted { $0.lastAccess < $1.lastAccess }
+                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.lastAccess < $1.lastAccess }
                 for value in values where value.lastAccess <= deletionDate {
                     if let entry = entries.removeValue(forKey: value.key) {
                         storageEngine.delete(entry)
@@ -278,13 +284,13 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
 }
 
 // MARK: - Extension for identifiable types
-/// Convenience APIs for cache values that provide string identifiers.
-public extension Cache where CacheType: Identifiable, CacheType.ID == String {
-    /// Adds an identifiable value using its string identifier as the cache key.
+/// Convenience APIs for cache values whose identifiers match the cache key type.
+public extension Cache where CacheType: Identifiable, CacheType.ID == KeyType {
+    /// Adds an identifiable value using its identifier as the cache key.
     ///
     /// - Parameter value: The value to cache.
     /// - Returns: The cache entry created for the value.
-    @discardableResult func add(_ value: CacheType) -> CacheEntry<CacheType> {
+    @discardableResult func add(_ value: CacheType) -> CacheEntry<KeyType, CacheType> {
         add(value, for: value.id)
     }
 }

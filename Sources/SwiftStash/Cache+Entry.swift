@@ -1,10 +1,10 @@
 import Foundation
 
 /// A cached value and the metadata used to manage it.
-public struct CacheEntry<CachedType: CacheableDataType>: Sendable {
+public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Sendable {
 
     /// The unique key identifying the cached value.
-    public private(set) var key: String
+    public private(set) var key: KeyType
 
     /// The date when the entry was created.
     public private(set) var creation: Date
@@ -23,7 +23,7 @@ public struct CacheEntry<CachedType: CacheableDataType>: Sendable {
     /// - Parameters:
     ///   - key: The unique key identifying the value.
     ///   - value: The value to store.
-    public init(key: String, value: CachedType) {
+    public init(key: KeyType, value: CachedType) {
         self.key = key
         self.value = value
         creation = Date.monotonic
@@ -40,7 +40,7 @@ public struct CacheEntry<CachedType: CacheableDataType>: Sendable {
     ///   - value: The value to store.
     ///   - creation: The date when the entry was originally created.
     ///   - lastAccess: The date when the entry was most recently accessed.
-    public init(key: String, value: CachedType, creation: Date, lastAccess: Date) {
+    public init(key: KeyType, value: CachedType, creation: Date, lastAccess: Date) {
         self.key = key
         self.value = value
         self.creation = creation

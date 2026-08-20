@@ -8,9 +8,9 @@ import Foundation
 ///
 /// Example:
 /// ```swift
-/// let engine = MemoryStorageEngine<MyType>()
+/// let engine = MemoryStorageEngine<MyKey, MyType>()
 /// ```
-public class MemoryStorageEngine<StoredType: CacheableDataType>: StorageEngine {
+public class MemoryStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType>: StorageEngine {
 
     /// Creates a no-op storage engine.
     public init() {}
@@ -18,20 +18,20 @@ public class MemoryStorageEngine<StoredType: CacheableDataType>: StorageEngine {
     /// Returns no entries.
     ///
     /// - Returns: An empty array.
-    @discardableResult public func load() -> [CacheEntry<StoredType>] {
+    @discardableResult public func load() -> [CacheEntry<KeyType, StoredType>] {
         []
     }
 
     /// Does nothing.
     ///
     /// - Parameter entry: Ignored.
-    public func delete(_: CacheEntry<StoredType>) {}
+    public func delete(_: CacheEntry<KeyType, StoredType>) {}
 
     /// Does nothing and reports success.
     ///
     /// - Parameter entry: Ignored.
     /// - Returns: Always `true`.
-    @discardableResult public func persist(_: CacheEntry<StoredType>) -> Bool {
+    @discardableResult public func persist(_: CacheEntry<KeyType, StoredType>) -> Bool {
         true
     }
 

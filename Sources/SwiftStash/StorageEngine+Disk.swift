@@ -26,10 +26,11 @@ private let diskStorageWritingOptions: Data.WritingOptions = {
 /// ```swift
 /// let engine = DiskStorageEngine(
 ///     directory: "myCache",
+///     keyType: MyKey.self,
 ///     serializer: JsonDiskStorageSerializer<MyType>()
 /// )
 /// ```
-public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskStorageSerializer>: StorageEngine where StoredType == Serializer.SerializedType {
+public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType, Serializer: DiskStorageSerializer>: StorageEngine where StoredType == Serializer.SerializedType {
 
     /// The writing options
     private let writingOptions: Data.WritingOptions
@@ -55,6 +56,22 @@ public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskSt
     ///   - serializer: The serializer used to convert stored values to and from data.
     public convenience init(
         directory: String,
+        serializer: Serializer
+    ) where KeyType == String {
+        self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions)
+    }
+
+    /// Creates an engine for a typed key that stores entries in a named cache directory.
+    ///
+    /// The named directory is not created by this initializer.
+    ///
+    /// - Parameters:
+    ///   - directory: The name of the directory below the app cache directory.
+    ///   - keyType: The key type used by this engine.
+    ///   - serializer: The serializer used to convert stored values to and from data.
+    public convenience init(
+        directory: String,
+        keyType _: KeyType.Type,
         serializer: Serializer
     ) {
         self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions)
@@ -99,8 +116,8 @@ public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskSt
     ///
     /// - Returns: Entries successfully read and deserialized from files with the
     ///   `cache_entry` extension. Their order is unspecified.
-    public func load() -> [CacheEntry<StoredType>] {
-        var entries = [CacheEntry<StoredType>]()
+    public func load() -> [CacheEntry<KeyType, StoredType>] {
+        var entries = [CacheEntry<KeyType, StoredType>]()
         let fileURLs = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
@@ -109,8 +126,9 @@ public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskSt
             do {
                 let data = try Data(contentsOf: fileURL)
                 let entry = try decoder.decode(DiskEntry.self, from: data)
-                if let value = try serializer.deserialize(entry.value) {
-                    let cacheEntry = CacheEntry<StoredType>(key: entry.key, value: value, creation: entry.creation, lastAccess: entry.lastAccess)
+                if let key = KeyType(stringValue: entry.key),
+                   let value = try serializer.deserialize(entry.value) {
+                    let cacheEntry = CacheEntry<KeyType, StoredType>(key: key, value: value, creation: entry.creation, lastAccess: entry.lastAccess)
                     entries.append(cacheEntry)
                 } else {
                     try? FileManager.default.removeItem(at: fileURL)
@@ -128,8 +146,8 @@ public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskSt
     /// Failures to remove the file are ignored.
     ///
     /// - Parameter entry: The entry whose key identifies the file to remove.
-    public func delete(_ entry: CacheEntry<StoredType>) {
-        let url = directory.appendingPathComponent(entry.key.cacheEntryFileName)
+    public func delete(_ entry: CacheEntry<KeyType, StoredType>) {
+        let url = directory.appendingPathComponent(entry.key.stringValue.cacheEntryFileName)
         try? FileManager.default.removeItem(at: url)
     }
 
@@ -141,11 +159,12 @@ public class DiskStorageEngine<StoredType: CacheableDataType, Serializer: DiskSt
     ///
     /// - Parameter entry: The entry to serialize and persist.
     /// - Returns: `true` if serialization, encoding, and writing succeed; otherwise, `false`.
-    public func persist(_ entry: CacheEntry<StoredType>) -> Bool {
+    public func persist(_ entry: CacheEntry<KeyType, StoredType>) -> Bool {
         do {
-            let url = directory.appendingPathComponent(entry.key.cacheEntryFileName)
+            let stringKey = entry.key.stringValue
+            let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
             let data = try serializer.serialize(entry.value)
-            let diskEntry = DiskEntry(key: entry.key, creation: entry.creation, lastAccess: entry.lastAccess, value: data)
+            let diskEntry = DiskEntry(key: stringKey, creation: entry.creation, lastAccess: entry.lastAccess, value: data)
             let diskData = try encoder.encode(diskEntry)
             try diskData.write(to: url, options: [.atomic])
             return true

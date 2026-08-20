@@ -4,11 +4,15 @@ import Testing
 
 @Suite(.serialized) struct DiskStorageEngineTests {
 
+    private enum TestKey: String, CacheKey {
+        case known
+    }
+
     init() {
         MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
     }
 
-    private func createEngineWithDirectory(_ name: String) -> DiskStorageEngine<String, StringDiskStorageSerializer<NSString>> {
+    private func createEngineWithDirectory(_ name: String) -> DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>> {
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return DiskStorageEngine(
@@ -115,5 +119,72 @@ import Testing
         #expect(keys == ["key1", "key2", "key3"])
 
         engine.clear()
+    }
+
+    @Test func persistAndLoadEnumKey() {
+        let dirName = "TestEnumKey_\(UUID().uuidString)"
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let engine = DiskStorageEngine(
+            directory: dirName,
+            keyType: TestKey.self,
+            serializer: StringDiskStorageSerializer()
+        )
+
+        #expect(engine.persist(CacheEntry(key: .known, value: "value")))
+
+        let entries = engine.load()
+        #expect(entries.count == 1)
+        #expect(entries.first?.key == .known)
+        #expect(entries.first?.value == "value")
+
+        engine.clear()
+    }
+
+    @Test func stringAndEnumKeysUseTheSameDiskRepresentation() {
+        let dirName = "TestCompatibleKey_\(UUID().uuidString)"
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let stringEngine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+            directory: dirName,
+            serializer: StringDiskStorageSerializer()
+        )
+        let enumEngine = DiskStorageEngine<TestKey, String, StringDiskStorageSerializer<NSString>>(
+            directory: dirName,
+            keyType: TestKey.self,
+            serializer: StringDiskStorageSerializer()
+        )
+
+        #expect(stringEngine.persist(CacheEntry(key: "known", value: "string")))
+        #expect(enumEngine.persist(CacheEntry(key: .known, value: "enum")))
+
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        #expect(files.filter { $0.pathExtension == "cache_entry" }.count == 1)
+        #expect(enumEngine.load().first?.value == "enum")
+
+        enumEngine.clear()
+    }
+
+    @Test func loadRemovesEntryWithUnknownEnumKey() {
+        let dirName = "TestUnknownEnumKey_\(UUID().uuidString)"
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let stringEngine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+            directory: dirName,
+            serializer: StringDiskStorageSerializer()
+        )
+        let enumEngine = DiskStorageEngine<TestKey, String, StringDiskStorageSerializer<NSString>>(
+            directory: dirName,
+            keyType: TestKey.self,
+            serializer: StringDiskStorageSerializer()
+        )
+
+        #expect(stringEngine.persist(CacheEntry(key: "unknown", value: "value")))
+        #expect(enumEngine.load().isEmpty)
+
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        #expect(files.allSatisfy { $0.pathExtension != "cache_entry" })
+
+        enumEngine.clear()
     }
 }
