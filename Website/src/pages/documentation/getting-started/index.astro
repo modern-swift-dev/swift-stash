@@ -1,0 +1,76 @@
+---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import CodeBlock from "../../../components/CodeBlock.astro";
+import SnapshotComparison from "../../../components/SnapshotComparison.astro";
+import { getLatestRelease } from "../../../lib/release";
+
+const release = await getLatestRelease();
+const installation = `.package(
+    url: "https://github.com/modern-swift-dev/swift-stash.git",
+    from: "${release.installationVersion}"
+)`;
+const firstCache = `import SwiftStash
+
+enum ProfileKey: String, CacheKey {
+    case current
+}
+
+let storage = MemoryStorageEngine<ProfileKey, String>()
+let cache = await Cache(storagePolicy: storage)
+
+await cache.add("Ada", for: .current)
+let currentProfile = await cache[.current]`;
+const diskCache = `let storage = DiskStorageEngine(
+    directory: "profiles",
+    keyType: ProfileKey.self,
+    serializer: JsonDiskStorageSerializer<Profile>()
+)
+let cache = await Cache(storagePolicy: storage)`;
+---
+
+<BaseLayout title="Getting started | SwiftStash" description="Install SwiftStash and create an actor-isolated cache.">
+  <section class="page-intro">
+    <div class="page-intro-content">
+      <p class="eyebrow">Getting started</p>
+      <h1>Put a value in the cache. Read it back with <span class="gradient-text">await.</span></h1>
+      <p>Start with memory storage. Move to disk when an entry needs to survive beyond the cache actor.</p>
+    </div>
+  </section>
+
+  <section class="content-section tint">
+    <article class="prose">
+      <h2>Requirements</h2>
+      <ul>
+        <li>Swift 6.0 or later</li>
+        <li>macOS 15, iOS 17, tvOS 17, watchOS 10, or visionOS 1 or later</li>
+      </ul>
+
+      <h2>Install {release.version}</h2>
+      <p>Add SwiftStash to the package dependencies in <code>Package.swift</code>. Then add <code>"SwiftStash"</code> to the dependencies of your target.</p>
+    </article>
+    <CodeBlock code={installation} label="Package.swift" />
+
+    <article class="prose">
+      <h2>First cache entry</h2>
+      <p><code>Cache</code> is an actor. The cache accepts values that conform to <code>Sendable</code>. A string-backed enum gets the required <code>CacheKey</code> behavior automatically.</p>
+    </article>
+    <CodeBlock code={firstCache} label="Swift" />
+
+    <article class="prose">
+      <h2>Persist entries to disk</h2>
+      <p>Create the named directory before persistence begins. <code>DiskStorageEngine</code> writes each entry below the app cache directory and does not create the named subdirectory for you.</p>
+    </article>
+    <CodeBlock code={diskCache} label="Swift" />
+  </section>
+
+  <section class="content-section" id="eviction">
+    <div class="section-content">
+      <article class="prose">
+        <h2>Compare cache state after eviction</h2>
+        <p>Choose <code>.fifo</code>, <code>.lifo</code>, or <code>.lru</code> when creating the cache. Call <code>evictExpired()</code> to remove old entries, or call <code>evictUntil(maxNbItems:)</code> to first remove expired entries and then enforce a maximum count.</p>
+        <p>SwiftStash does not run a background timer. Place the eviction call in the workflow that knows when reducing the cache makes sense.</p>
+      </article>
+      <SnapshotComparison title="Compare cache records before and after a count limit" />
+    </div>
+  </section>
+</BaseLayout>

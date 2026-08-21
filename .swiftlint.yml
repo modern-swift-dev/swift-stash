@@ -1,6 +1,8 @@
 excluded:
   - .build
-  - Examples/.build
+  - Examples/custom-serializer/.build
+  - Examples/disk-cache/.build
+  - Examples/memory-cache/.build
   - .swiftpm
 
 disabled_rules:

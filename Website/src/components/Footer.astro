@@ -1,0 +1,23 @@
+---
+const base = `${import.meta.env.BASE_URL}/`;
+---
+
+<footer class="site-footer">
+  <div class="footer-content">
+    <div>
+      <a class="brand" href={base}>
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>SwiftStash</span>
+      </a>
+      <p>A small, actor-isolated cache for modern Swift.</p>
+    </div>
+    <nav aria-label="Footer navigation">
+      <ul class="footer-links">
+        <li><a href={`${base}documentation/`}>Documentation</a></li>
+        <li><a href={`${base}examples/`}>Examples</a></li>
+        <li><a href={`${base}api/documentation/swiftstash/`}>API reference</a></li>
+        <li><a href="https://github.com/modern-swift-dev/swift-stash">GitHub</a></li>
+      </ul>
+    </nav>
+  </div>
+</footer>

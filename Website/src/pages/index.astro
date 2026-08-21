@@ -1,0 +1,114 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import CodeBlock from "../components/CodeBlock.astro";
+import DocumentationCard from "../components/DocumentationCard.astro";
+import ReleaseCard from "../components/ReleaseCard.astro";
+import SnapshotComparison from "../components/SnapshotComparison.astro";
+import { getLatestRelease } from "../lib/release";
+
+const base = `${import.meta.env.BASE_URL}/`;
+const release = await getLatestRelease();
+const installCode = `dependencies: [
+    .package(
+        url: "https://github.com/modern-swift-dev/swift-stash.git",
+        from: "${release.installationVersion}"
+    )
+]`;
+const cacheCode = `import SwiftStash
+
+let storage = MemoryStorageEngine<String, String>()
+let cache = await Cache(
+    policy: .lru(threshold: 5 * 60),
+    storagePolicy: storage
+)
+
+await cache.add("Ada", for: "current-user")
+let name = await cache["current-user"]`;
+---
+
+<BaseLayout title="SwiftStash | A cache for modern Swift" description="SwiftStash is a small actor-isolated cache with memory and disk storage engines for Swift 6.">
+  <section class="hero">
+    <div class="hero-content">
+      <p class="eyebrow">Swift 6 cache library</p>
+      <h1>Cache Swift values <span class="gradient-text">inside an actor.</span></h1>
+      <p class="hero-copy">SwiftStash is an actor-isolated cache with explicit FIFO, LIFO, and LRU eviction. Use a no-op memory engine for process-local values or persist entries to disk with a serializer you control.</p>
+      <div class="hero-actions">
+        <a class="button-primary" href={`${base}documentation/getting-started/`}>Read the guide</a>
+        <a class="button-secondary" href={`${base}examples/`}>See runnable examples</a>
+      </div>
+      <p class="hero-note">No background timer. You decide when eviction runs.</p>
+    </div>
+  </section>
+
+  <section class="content-section" aria-label="Latest SwiftStash release">
+    <ReleaseCard version={release.version} publishedAt={release.publishedAt} notesURL={release.notesURL} />
+    <div class="prose">
+      <h2>Install {release.version}</h2>
+      <p>Add the package to your <code>Package.swift</code>, then add <code>"SwiftStash"</code> to the target dependencies that use it.</p>
+    </div>
+    <CodeBlock code={installCode} label="Package.swift" />
+  </section>
+
+  <section class="content-section tint">
+    <div class="section-content">
+      <div class="section-heading">
+        <p class="eyebrow">A small first cache</p>
+        <h2>Store and read a value through the actor.</h2>
+        <p>Calls that cross the cache actor use <code>await</code>. Cached values need to conform to <code>Sendable</code>.</p>
+      </div>
+      <CodeBlock code={cacheCode} label="Swift" />
+    </div>
+  </section>
+
+  <section class="content-section">
+    <div class="section-content">
+      <div class="section-heading">
+        <p class="eyebrow">What it does</p>
+        <h2>Choose storage and control eviction.</h2>
+      </div>
+      <div class="card-grid">
+        <article class="feature-card">
+          <h3>Actor isolation</h3>
+          <p><code>Cache</code> is an actor. Reads, writes, and eviction happen inside its isolation domain.</p>
+        </article>
+        <article class="feature-card">
+          <h3>Explicit eviction</h3>
+          <p>Set a FIFO, LIFO, or LRU policy, then call <code>evictExpired()</code> or <code>evictUntil(maxNbItems:)</code>.</p>
+        </article>
+        <article class="feature-card">
+          <h3>Storage you choose</h3>
+          <p>Use memory when persistence does not matter. Use disk with JSON, strings, or a custom serializer when it does.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="content-section tint">
+    <div class="section-content">
+      <SnapshotComparison />
+    </div>
+  </section>
+
+  <section class="content-section">
+    <div class="section-content">
+      <div class="section-heading">
+        <p class="eyebrow">Platforms and source</p>
+        <h2>Built as a Swift package.</h2>
+        <p>SwiftStash is MIT-licensed. Its source, issues, releases, and package metadata are public in the modern-swift-dev GitHub organization.</p>
+        <ul class="platform-list" aria-label="Supported platforms">
+          <li>macOS 15+</li>
+          <li>iOS 17+</li>
+          <li>tvOS 17+</li>
+          <li>watchOS 10+</li>
+          <li>visionOS 1+</li>
+          <li>Linux with Swift 6+</li>
+        </ul>
+      </div>
+      <div class="card-grid">
+        <DocumentationCard title="Documentation" description="Start with the guide, then choose a storage engine and eviction policy." href={`${base}documentation/`} />
+        <DocumentationCard title="API reference" description="Browse generated Swift API documentation for the SwiftStash module." href={`${base}api/documentation/swiftstash/`} label="Open API reference" />
+        <DocumentationCard title="MIT source on GitHub" description="Inspect the package and its license, report an issue, or review published releases." href="https://github.com/modern-swift-dev/swift-stash" label="Open repository" />
+      </div>
+    </div>
+  </section>
+</BaseLayout>

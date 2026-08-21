@@ -1,0 +1,24 @@
+---
+interface Props {
+  version: string;
+  publishedAt: string;
+  notesURL: string;
+}
+
+const { version, publishedAt, notesURL } = Astro.props;
+const date = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC"
+}).format(new Date(publishedAt));
+---
+
+<aside class="release-card" aria-labelledby="release-title">
+  <div>
+    <p class="eyebrow">Latest release</p>
+    <h2 id="release-title">{version}</h2>
+    <p>Published {date}</p>
+  </div>
+  <a href={notesURL}>Read release notes <span aria-hidden="true">→</span></a>
+</aside>

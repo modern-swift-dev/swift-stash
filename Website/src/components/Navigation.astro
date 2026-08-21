@@ -1,0 +1,24 @@
+---
+const base = `${import.meta.env.BASE_URL}/`;
+const links = [
+  { href: base, label: "Overview" },
+  { href: `${base}documentation/`, label: "Documentation" },
+  { href: `${base}examples/`, label: "Examples" },
+  { href: `${base}api/documentation/swiftstash/`, label: "API reference" }
+];
+---
+
+<header class="site-header">
+  <nav class="navigation" aria-label="Primary navigation">
+    <a class="brand" href={base} aria-label="SwiftStash home">
+      <span class="brand-mark" aria-hidden="true">S</span>
+      <span>SwiftStash</span>
+    </a>
+    <ul class="navigation-links">
+      {links.map((link) => (
+        <li><a href={link.href}>{link.label}</a></li>
+      ))}
+    </ul>
+    <a class="nav-action" href={`${base}documentation/getting-started/`}>Get started</a>
+  </nav>
+</header>

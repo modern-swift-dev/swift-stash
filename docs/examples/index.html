@@ -1,0 +1,127 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Runnable SwiftStash examples for memory caches, disk caches, and custom serializers."><link rel="icon" href="/swift-stash/favicon.svg" type="image/svg+xml"><title>Examples | SwiftStash</title><link rel="stylesheet" href="/swift-stash/_astro/BaseLayout.C2lgJaJT.css"></head><body><a class="skip-link" href="#main-content">Skip to content</a><header class="site-header"><nav class="navigation" aria-label="Primary navigation"><a class="brand" href="/swift-stash/" aria-label="SwiftStash home"><span class="brand-mark" aria-hidden="true">S</span><span>SwiftStash</span></a><ul class="navigation-links"><li><a href="/swift-stash/">Overview</a></li><li><a href="/swift-stash/documentation/">Documentation</a></li><li><a href="/swift-stash/examples/">Examples</a></li><li><a href="/swift-stash/api/documentation/swiftstash/">API reference</a></li></ul><a class="nav-action" href="/swift-stash/documentation/getting-started/">Get started</a></nav></header><main id="main-content"><section class="page-intro"><div class="page-intro-content"><p class="eyebrow">Examples</p><h1>Read the complete <span class="gradient-text">executable examples.</span></h1><p>Each example is a standalone Swift package. Run it from the repository after moving into its directory or passing its path to SwiftPM.</p></div></section><section class="content-section tint" id="memory-cache"><article class="prose"><h2>Memory cache</h2><p>Use a typed enum key and an identifiable <code>Sendable</code> value. The identifiable overload uses the value's ID as its cache key.</p></article><div class="code-block"><div class="code-block-bar"><span>MemoryCacheExample</span></div><pre><code class="language-swift">import SwiftStash
+
+private struct Article: Identifiable, Sendable {
+    let id: ArticleKey
+    let title: String
+}
+
+private enum ArticleKey: String, CacheKey {
+    case concurrency
+    case actors
+}
+
+@main private enum MemoryCacheExample {
+    static func main() async {
+        let storage = MemoryStorageEngine&lt;ArticleKey, Article&gt;()
+        let cache = await Cache(
+            policy: .lru(threshold: 10 * 60),
+            storagePolicy: storage
+        )
+
+        await cache.add(Article(id: .concurrency, title: &quot;A tour of Swift concurrency&quot;))
+        await cache.add(Article(id: .actors, title: &quot;Protecting state with actors&quot;))
+
+        if let article = await cache[.concurrency] {
+            print(&quot;Read: \(article.title)&quot;)
+        }
+
+        let remainingCount = await cache.evictUntil(maxNbItems: 1)
+        print(&quot;Entries after eviction: \(remainingCount)&quot;)
+    }
+}
+</code></pre></div></section><section class="content-section" id="disk-cache"><article class="prose"><h2>Disk cache with JSON</h2><p>Make the named directory first. The JSON serializer stores a <code>Codable</code> profile, and the cache reads the profile through its string ID.</p></article><div class="code-block"><div class="code-block-bar"><span>DiskCacheExample</span></div><pre><code class="language-swift">import Foundation
+import SwiftStash
+
+private struct Profile: Codable, Identifiable, Sendable {
+    let id: String
+    let displayName: String
+}
+
+@main private enum DiskCacheExample {
+    static func main() async throws {
+        let directoryName = &quot;profile-example&quot;
+        try createCacheDirectory(named: directoryName)
+
+        let storage = DiskStorageEngine(
+            directory: directoryName,
+            serializer: JsonDiskStorageSerializer&lt;Profile&gt;()
+        )
+        let cache = await Cache(
+            policy: .lru(threshold: 24 * 60 * 60),
+            storagePolicy: storage
+        )
+
+        let profile = Profile(id: &quot;42&quot;, displayName: &quot;Ada&quot;)
+        await cache.add(profile)
+
+        if let cachedProfile = await cache[profile.id] {
+            print(&quot;Loaded from disk-backed cache: \(cachedProfile.displayName)&quot;)
+        }
+    }
+
+    private static func createCacheDirectory(named name: String) throws {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? &quot;app-cache&quot;
+        let rootDirectory = URL.cachesDirectory
+            .appendingPathComponent(&quot;\(bundleIdentifier)-cache&quot;)
+        let directory = rootDirectory.appendingPathComponent(name)
+
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+    }
+}
+</code></pre></div></section><section class="content-section tint" id="custom-serializer"><article class="prose"><h2>Custom disk serializer</h2><p>A serializer converts one stored type to <code>Data</code> and back. This example persists a temperature as an eight-byte value.</p></article><div class="code-block"><div class="code-block-bar"><span>CustomSerializerExample</span></div><pre><code class="language-swift">import Foundation
+import SwiftStash
+
+private struct Temperature: Equatable, Sendable {
+    let celsius: Double
+}
+
+private struct TemperatureSerializer: DiskStorageSerializer {
+    func serialize(_ value: Temperature) throws -&gt; Data {
+        withUnsafeBytes(of: value.celsius.bitPattern.bigEndian) { Data($0) }
+    }
+
+    func deserialize(_ data: Data) throws -&gt; Temperature? {
+        guard data.count == MemoryLayout&lt;UInt64&gt;.size else {
+            return nil
+        }
+
+        var bits: UInt64 = 0
+        _ = withUnsafeMutableBytes(of: &amp;bits) { data.copyBytes(to: $0) }
+        return Temperature(celsius: Double(bitPattern: UInt64(bigEndian: bits)))
+    }
+}
+
+@main private enum CustomSerializerExample {
+    static func main() async throws {
+        let directoryName = &quot;temperature-example&quot;
+        try createCacheDirectory(named: directoryName)
+
+        let storage = DiskStorageEngine(
+            directory: directoryName,
+            serializer: TemperatureSerializer()
+        )
+        let cache = await Cache(storagePolicy: storage)
+
+        await cache.add(Temperature(celsius: 21.5), for: &quot;office&quot;)
+
+        if let temperature = await cache[&quot;office&quot;] {
+            print(&quot;Office: \(temperature.celsius) °C&quot;)
+        }
+    }
+
+    private static func createCacheDirectory(named name: String) throws {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? &quot;app-cache&quot;
+        let rootDirectory = URL.cachesDirectory
+            .appendingPathComponent(&quot;\(bundleIdentifier)-cache&quot;)
+        let directory = rootDirectory.appendingPathComponent(name)
+
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+    }
+}
+</code></pre></div></section></main><footer class="site-footer"><div class="footer-content"><div><a class="brand" href="/swift-stash/"><span class="brand-mark" aria-hidden="true">S</span><span>SwiftStash</span></a><p>A small, actor-isolated cache for modern Swift.</p></div><nav aria-label="Footer navigation"><ul class="footer-links"><li><a href="/swift-stash/documentation/">Documentation</a></li><li><a href="/swift-stash/examples/">Examples</a></li><li><a href="/swift-stash/api/documentation/swiftstash/">API reference</a></li><li><a href="https://github.com/modern-swift-dev/swift-stash">GitHub</a></li></ul></nav></div></footer></body></html>

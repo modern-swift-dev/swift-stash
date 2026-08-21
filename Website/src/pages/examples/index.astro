@@ -1,0 +1,46 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import CodeBlock from "../../components/CodeBlock.astro";
+import { readFile } from "node:fs/promises";
+
+const repositoryRoot = new URL("../../../../", import.meta.url);
+const [memoryCode, diskCode, serializerCode] = await Promise.all([
+  readFile(new URL("Examples/memory-cache/Sources/MemoryCacheExample/main.swift", repositoryRoot), "utf8"),
+  readFile(new URL("Examples/disk-cache/Sources/DiskCacheExample/main.swift", repositoryRoot), "utf8"),
+  readFile(new URL("Examples/custom-serializer/Sources/CustomSerializerExample/main.swift", repositoryRoot), "utf8")
+]);
+---
+
+<BaseLayout title="Examples | SwiftStash" description="Runnable SwiftStash examples for memory caches, disk caches, and custom serializers.">
+  <section class="page-intro">
+    <div class="page-intro-content">
+      <p class="eyebrow">Examples</p>
+      <h1>Read the complete <span class="gradient-text">executable examples.</span></h1>
+      <p>Each example is a standalone Swift package. Run it from the repository after moving into its directory or passing its path to SwiftPM.</p>
+    </div>
+  </section>
+
+  <section class="content-section tint" id="memory-cache">
+    <article class="prose">
+      <h2>Memory cache</h2>
+      <p>Use a typed enum key and an identifiable <code>Sendable</code> value. The identifiable overload uses the value's ID as its cache key.</p>
+    </article>
+    <CodeBlock code={memoryCode} label="MemoryCacheExample" />
+  </section>
+
+  <section class="content-section" id="disk-cache">
+    <article class="prose">
+      <h2>Disk cache with JSON</h2>
+      <p>Make the named directory first. The JSON serializer stores a <code>Codable</code> profile, and the cache reads the profile through its string ID.</p>
+    </article>
+    <CodeBlock code={diskCode} label="DiskCacheExample" />
+  </section>
+
+  <section class="content-section tint" id="custom-serializer">
+    <article class="prose">
+      <h2>Custom disk serializer</h2>
+      <p>A serializer converts one stored type to <code>Data</code> and back. This example persists a temperature as an eight-byte value.</p>
+    </article>
+    <CodeBlock code={serializerCode} label="CustomSerializerExample" />
+  </section>
+</BaseLayout>

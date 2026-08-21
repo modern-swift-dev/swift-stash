@@ -1,0 +1,28 @@
+---
+interface Props {
+  title?: string;
+}
+
+const { title = "An explicit eviction changes the cache" } = Astro.props;
+---
+
+<figure class="snapshot-comparison" aria-labelledby="comparison-title">
+  <figcaption>
+    <p class="eyebrow">Cache state</p>
+    <h2 id="comparison-title">{title}</h2>
+  </figcaption>
+  <div class="comparison-grid">
+    <section class="state-card" aria-label="Before eviction">
+      <p class="state-label">Before</p>
+      <div class="cache-record"><code>concurrency</code><span>A tour of Swift concurrency</span></div>
+      <div class="cache-record"><code>actors</code><span>Protecting state with actors</span></div>
+      <p class="record-count">2 entries</p>
+    </section>
+    <div class="comparison-arrow" aria-hidden="true">→</div>
+    <section class="state-card state-card-after" aria-label="After count-based eviction">
+      <p class="state-label">After <code>evictUntil(maxNbItems: 1)</code></p>
+      <div class="cache-record"><code>concurrency</code><span>A tour of Swift concurrency</span></div>
+      <p class="record-count">1 entry</p>
+    </section>
+  </div>
+</figure>

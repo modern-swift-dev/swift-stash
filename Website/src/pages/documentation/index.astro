@@ -1,0 +1,29 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import DocumentationCard from "../../components/DocumentationCard.astro";
+
+const base = `${import.meta.env.BASE_URL}/`;
+---
+
+<BaseLayout title="Documentation | SwiftStash" description="Guides and API reference for SwiftStash.">
+  <section class="page-intro">
+    <div class="page-intro-content">
+      <p class="eyebrow">Documentation</p>
+      <h1>Learn the cache, then decide when it should evict.</h1>
+      <p>SwiftStash has a narrow API. The guide covers installation, memory caches, disk persistence, and the eviction methods that change cache state.</p>
+    </div>
+  </section>
+
+  <section class="content-section tint">
+    <div class="section-content">
+      <div class="card-grid">
+        <DocumentationCard title="Getting started" description="Check requirements, add the package, create a cache, and make the first read." href={`${base}documentation/getting-started/`} />
+        <DocumentationCard title="Memory storage" description="Use MemoryStorageEngine when values should last only as long as the cache actor." href={`${base}examples/#memory-cache`} label="Read the example" />
+        <DocumentationCard title="Disk storage" description="Persist Codable data with JSON or bring your own DiskStorageSerializer." href={`${base}examples/#disk-cache`} label="Read the example" />
+        <DocumentationCard title="Eviction" description="Compare FIFO, LIFO, and LRU, then call eviction at the point your app chooses." href={`${base}documentation/getting-started/#eviction`} label="Read about eviction" />
+        <DocumentationCard title="Examples" description="Copy from independent executable Swift packages in the repository." href={`${base}examples/`} label="Open examples" />
+        <DocumentationCard title="API reference" description="Generated documentation for public cache, storage, serializer, and key types." href={`${base}api/documentation/swiftstash/`} label="Open API reference" />
+      </div>
+    </div>
+  </section>
+</BaseLayout>

@@ -2,6 +2,8 @@
 
 SwiftStash is a small, concurrency-safe cache for Swift. It provides an actor-isolated API, configurable FIFO, LIFO, and LRU eviction, and interchangeable memory or disk storage engines.
 
+[Read the guide](https://modern-swift-dev.github.io/swift-stash/) or open the [SwiftStash API reference](https://modern-swift-dev.github.io/swift-stash/api/documentation/swiftstash/).
+
 ## Requirements
 
 - Swift 6.0+
@@ -9,6 +11,7 @@ SwiftStash is a small, concurrency-safe cache for Swift. It provides an actor-is
 - iOS and tvOS 17+
 - watchOS 10+
 - visionOS 1+
+- Linux with Swift 6.0+
 
 ## Installation
 
@@ -18,7 +21,7 @@ Add SwiftStash to your package dependencies:
 dependencies: [
     .package(
         url: "https://github.com/modern-swift-dev/swift-stash.git",
-        branch: "main"
+        from: "1.1.0"
     )
 ]
 ```
@@ -31,8 +34,6 @@ Then add `SwiftStash` to the dependencies of your target:
     dependencies: ["SwiftStash"]
 )
 ```
-
-Use a tagged version requirement instead of `branch` once the version you want is available.
 
 ## Quick start
 
@@ -106,14 +107,16 @@ The threshold is measured in seconds. Call `evictExpired()` to remove expired en
 
 The examples are independent, executable Swift packages:
 
-- [Memory cache](docs/examples/memory-cache) — basic reads, writes, identifiable values, and count-based eviction.
-- [Disk cache](docs/examples/disk-cache) — persistent `Codable` values with the JSON serializer.
-- [Custom serializer](docs/examples/custom-serializer) — storing a custom value with a binary representation.
+- [Memory cache](Examples/memory-cache) - basic reads, writes, identifiable values, and count-based eviction.
+- [Disk cache](Examples/disk-cache) - persistent `Codable` values with the JSON serializer.
+- [Custom serializer](Examples/custom-serializer) - storing a custom value with a binary representation.
+
+The [examples guide](https://modern-swift-dev.github.io/swift-stash/examples/) explains each program before showing its complete source.
 
 Run one from the repository root:
 
 ```sh
-swift run --package-path docs/examples/memory-cache
+swift run --package-path Examples/memory-cache
 ```
 
 ## Development
@@ -133,6 +136,10 @@ make test          # Run the Swift package tests
 make lint          # Check the Swift sources with SwiftLint
 make format        # Apply SwiftFormat and SwiftLint fixes
 make documentation # Build the API documentation
+make site-setup    # Install the locked website dependencies
+make site-validate # Type-check and build the Astro site
+make site-build    # Replace docs/ with the Astro and DocC output
+make site-preview  # Serve the assembled docs/ directory locally
 make test-all      # Test all supported Apple platforms and Linux
 ```
 
@@ -141,6 +148,21 @@ For a direct SwiftPM test run, use:
 ```sh
 swift test
 ```
+
+## Publishing the documentation site
+
+The Astro source is in `Website/`. `docs/` contains generated files for GitHub Pages and is committed so maintainers can review every site update.
+
+For each release:
+
+1. Publish the GitHub release.
+2. Run `make site-setup` and `make site-build` from the repository root.
+3. Confirm that the release card shows the published version and review the generated Astro and DocC changes in `docs/`.
+4. Run `make site-preview` for a final local check, then commit `docs/` with the source changes.
+
+The build stops if GitHub does not return a valid latest published release. It also checks internal links before replacing `docs/`.
+
+GitHub Pages needs one manual repository setting. In **Settings > Pages**, choose **Deploy from a branch**, select `main`, select `/docs`, and save. GitHub documents these steps in [Configuring a publishing source for your GitHub Pages site](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site). The build does not change this remote setting.
 
 ## License
 

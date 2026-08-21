@@ -1,4 +1,4 @@
---exclude .build,Examples/.build
+--exclude .build,Examples/custom-serializer/.build,Examples/disk-cache/.build,Examples/memory-cache/.build
 --swiftversion 6.0
 --allman false
 --binarygrouping 4,8

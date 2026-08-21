@@ -15,7 +15,8 @@ let package = Package(
         .library(name: "SwiftStash", targets: ["SwiftStash"])
     ],
     dependencies: [
-        .package(url: "https://github.com/MobileNativeFoundation/Kronos.git", .upToNextMajor(from: "4.3.1"))
+        .package(url: "https://github.com/MobileNativeFoundation/Kronos.git", .upToNextMajor(from: "4.3.1")),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", exact: "1.5.0")
     ],
     targets: [
         .target(
