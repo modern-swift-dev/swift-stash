@@ -91,6 +91,8 @@ let cache = await Cache(storagePolicy: storage)
 
 The named subdirectory must exist before values are persisted. Disk writes report failure by returning `false` from the storage engine; cache mutation APIs do not throw when persistence fails. See the complete disk example for directory setup.
 
+Disk timestamps preserve fractional seconds. Existing ISO-8601 entries remain readable, but older SwiftStash releases cannot read the new numeric timestamp format.
+
 You can support another persistence mechanism by conforming a type to `StorageEngine`, or support another disk representation by conforming to `DiskStorageSerializer`.
 
 ## Eviction

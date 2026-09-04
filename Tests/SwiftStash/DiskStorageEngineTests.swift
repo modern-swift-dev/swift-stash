@@ -189,6 +189,38 @@ extension ClockDependentTests {
             enumEngine.clear()
         }
 
+        @Test func legacyISO8601TimestampsRemainReadable() throws {
+            let name = "TestLegacyTimestamp_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            let engine = createEngineWithDirectory(name)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let json = #"{"key":"key","creation":"1970-01-01T00:16:40Z","lastAccess":"1970-01-01T00:16:41Z","value":"dmFsdWU="}"#
+            try Data(json.utf8).write(to: directory.appendingPathComponent("legacy.cache_entry"))
+
+            let entry = try #require(engine.load().first)
+            #expect(entry.value == "value")
+            #expect(entry.creation == Date(timeIntervalSince1970: 1000))
+            #expect(entry.lastAccess == Date(timeIntervalSince1970: 1001))
+        }
+
+        @Test func fractionalTimestampsSurviveReload() async throws {
+            let name = "TestFractionalTimestamp_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            let engine = createEngineWithDirectory(name)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let creation = Date(timeIntervalSince1970: 1000.875)
+            let access = Date(timeIntervalSince1970: 1000.9375)
+            #expect(engine.persist(CacheEntry(key: "key", value: "value", creation: creation, lastAccess: access)))
+            let loaded = try #require(engine.load().first)
+            #expect(loaded.creation == creation)
+            #expect(loaded.lastAccess == access)
+
+            MonotonicClock.shared.set(unixTimestamp: 1000.9375)
+            let cache = await Cache(policy: .lru(threshold: 0.5), storagePolicy: engine)
+            await cache.evictExpired()
+            #expect(await cache.count == 1)
+        }
+
         @Test func withoutOverwritingPreservesExistingValue() throws {
             let name = "TestWritingOptions_\(UUID().uuidString)"
             let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)

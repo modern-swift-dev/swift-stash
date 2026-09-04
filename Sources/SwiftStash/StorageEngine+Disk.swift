@@ -90,14 +90,24 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
         encoder = JSONEncoder()
         encoder.dataEncodingStrategy = .base64
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .secondsSince1970
         encoder.keyEncodingStrategy = .useDefaultKeys
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.nonConformingFloatEncodingStrategy = .throw
 
         decoder = JSONDecoder()
         decoder.dataDecodingStrategy = .base64
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            if let timestamp = try? container.decode(Double.self) {
+                return Date(timeIntervalSince1970: timestamp)
+            }
+            let string = try container.decode(String.self)
+            guard let date = ISO8601DateFormatter().date(from: string) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid legacy cache timestamp")
+            }
+            return date
+        }
         decoder.keyDecodingStrategy = .useDefaultKeys
         decoder.nonConformingFloatDecodingStrategy = .throw
     }
