@@ -16,7 +16,7 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Send
     public private(set) var accessCount: Int64 = 0
 
     /// The value stored in the entry.
-    public private(set) var value: CachedType!
+    public private(set) var value: CachedType
 
     /// Creates a cache entry with the current monotonic date as its creation and last-access dates.
     ///

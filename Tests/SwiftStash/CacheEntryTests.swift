@@ -35,6 +35,13 @@ extension ClockDependentTests {
             #expect(entry.lastAccess == lastAccessDate)
         }
 
+        @Test func optionalPayloadRetainsItsDeclaredType() {
+            let empty = CacheEntry<String, String?>(key: "empty", value: nil)
+            let populated = CacheEntry<String, String?>(key: "populated", value: "value")
+            #expect(empty.value == nil)
+            #expect(populated.value == "value")
+        }
+
         @Test func updateLastAccessIncrementsCount() {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             var entry = CacheEntry(key: "testKey", value: "testValue")
