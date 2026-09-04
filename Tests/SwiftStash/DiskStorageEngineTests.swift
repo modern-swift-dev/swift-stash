@@ -2,6 +2,10 @@ import Foundation
 @testable import SwiftStash
 import Testing
 
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
+
 extension ClockDependentTests {
     @Suite(.serialized) struct DiskStorageEngineTests {
 
@@ -187,6 +191,105 @@ extension ClockDependentTests {
             #expect(files.allSatisfy { $0.pathExtension != "cache_entry" })
 
             enumEngine.clear()
+        }
+
+        private struct LegacyEntry: Encodable {
+            let key: String
+            let creation: Date
+            let lastAccess: Date
+            let value: Data
+        }
+
+        private func writeLegacyEntry(key: String, value: String, creation: Double, lastAccess: Double, directory: URL) throws {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let entry = LegacyEntry(
+                key: key,
+                creation: Date(timeIntervalSince1970: creation),
+                lastAccess: Date(timeIntervalSince1970: lastAccess),
+                value: Data(value.utf8)
+            )
+            // Reproduce the old filename format without Unicode normalization.
+            #if canImport(CryptoKit)
+            let filename = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+            #else
+            let filename = Data(key.utf8).base64EncodedString()
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "=", with: "")
+            #endif
+            try encoder.encode(entry).write(to: directory.appendingPathComponent(filename + ".cache_entry"))
+        }
+
+        @Test func equivalentUnicodeKeysShareOneFileAndStayDeleted() throws {
+            let name = "TestUnicode_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            let engine = createEngineWithDirectory(name)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let composed = "\u{E9}"
+            let decomposed = "e\u{301}"
+
+            #expect(engine.persist(CacheEntry(key: composed, value: "old")))
+            #expect(engine.persist(CacheEntry(key: decomposed, value: "new")))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+            #expect(engine.load().first?.value == "new")
+
+            engine.delete(CacheEntry(key: composed, value: "new"))
+            #expect(createEngineWithDirectory(name).load().isEmpty)
+        }
+
+        @Test(arguments: [false, true]) func legacyDuplicatesMigrateTheNewestEntry(useLastAccess: Bool) throws {
+            let name = "TestLegacyUnicode_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            let engine = createEngineWithDirectory(name)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try writeLegacyEntry(key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1002, directory: directory)
+            try writeLegacyEntry(key: "e\u{301}", value: "new", creation: useLastAccess ? 1000 : 1001, lastAccess: 1003, directory: directory)
+
+            let entries = engine.load()
+            #expect(entries.count == 1)
+            #expect(entries.first?.value == "new")
+            #expect(entries.first?.creation == Date(timeIntervalSince1970: useLastAccess ? 1000 : 1001))
+            #expect(entries.first?.lastAccess == Date(timeIntervalSince1970: 1003))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 1)
+            #expect(createEngineWithDirectory(name).load().first?.value == "new")
+
+            engine.delete(try #require(entries.first))
+            #expect(createEngineWithDirectory(name).load().isEmpty)
+        }
+
+        @Test(arguments: [false, true]) func legacyEntriesSupportMutationBeforeLoading(overwrite: Bool) throws {
+            let name = "TestLegacyMutation_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try writeLegacyEntry(key: "e\u{301}", value: "old", creation: 1000, lastAccess: 1000, directory: directory)
+            let engine = createEngineWithDirectory(name)
+            let entry = CacheEntry(key: "\u{E9}", value: "new")
+            if overwrite {
+                #expect(engine.persist(entry))
+                #expect(createEngineWithDirectory(name).load().first?.value == "new")
+            }
+            engine.delete(entry)
+            #expect(createEngineWithDirectory(name).load().isEmpty)
+        }
+
+        @Test func failedMigrationRetainsSourcesAndDeleteRemovesAllAliases() throws {
+            let name = "TestFailedMigration_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try writeLegacyEntry(key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1000, directory: directory)
+            try writeLegacyEntry(key: "e\u{301}", value: "new", creation: 1001, lastAccess: 1001, directory: directory)
+            let engine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                directory: name, serializer: StringDiskStorageSerializer(), options: [.withoutOverwriting]
+            )
+
+            let entry = try #require(engine.load().first)
+            #expect(entry.value == "new")
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
+            engine.delete(entry)
+            #expect(createEngineWithDirectory(name).load().isEmpty)
         }
 
         @Test func legacyISO8601TimestampsRemainReadable() throws {

@@ -41,6 +41,10 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     /// The Serializer type
     private let serializer: Serializer
 
+    /// Files discovered during loading, including legacy spellings of equivalent keys.
+    private var entryFiles: [KeyType: Set<URL>] = [:]
+    private var hasLoaded = false
+
     /// Creates an engine that stores entries in a named directory below the app cache directory.
     ///
     /// The named directory is not created by this initializer.
@@ -78,7 +82,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
     ///   - serializer: The serializer used to convert stored values to and from data.
-    ///   - options: Options passed to file writes.
+    ///   - options: Options passed to file writes, including writes that migrate legacy filenames.
     public init(
         directory: String,
         serializer: Serializer,
@@ -116,23 +120,33 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     ///
     /// Files that cannot be read, decoded, or deserialized are removed on a best-effort
     /// basis. If the directory cannot be enumerated, this method returns an empty array.
+    /// Equivalent keys are merged by newest creation date, then last-access date.
+    /// Legacy filenames are migrated when writing succeeds; failed migrations retain their source files.
     ///
     /// - Returns: Entries successfully read and deserialized from files with the
     ///   `cache_entry` extension. Their order is unspecified.
     public func load() -> [CacheEntry<KeyType, StoredType>] {
-        var entries = [CacheEntry<KeyType, StoredType>]()
+        hasLoaded = true
+        var entries: [KeyType: LoadedEntry] = [:]
+        entryFiles.removeAll()
         let fileURLs = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         )) ?? []
-        for fileURL in fileURLs where fileURL.pathExtension == "cache_entry" {
+        for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where fileURL.pathExtension == "cache_entry" {
             do {
                 let data = try Data(contentsOf: fileURL)
                 let entry = try decoder.decode(DiskEntry.self, from: data)
                 if let key = KeyType(stringValue: entry.key),
                    let value = try serializer.deserialize(entry.value) {
                     let cacheEntry = CacheEntry<KeyType, StoredType>(key: key, value: value, creation: entry.creation, lastAccess: entry.lastAccess)
-                    entries.append(cacheEntry)
+                    entryFiles[key, default: []].insert(fileURL)
+                    if let previous = entries[key],
+                       previous.entry.creation > cacheEntry.creation ||
+                       (previous.entry.creation == cacheEntry.creation && previous.entry.lastAccess >= cacheEntry.lastAccess) {
+                        continue
+                    }
+                    entries[key] = LoadedEntry(entry: cacheEntry, diskEntry: entry)
                 } else {
                     try? FileManager.default.removeItem(at: fileURL)
                 }
@@ -141,7 +155,20 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
                 try? FileManager.default.removeItem(at: fileURL)
             }
         }
-        return entries
+        for (key, loaded) in entries {
+            let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+            guard entryFiles[key] != Set([url]) else {
+                continue
+            }
+            do {
+                let data = try encoder.encode(loaded.diskEntry)
+                try data.write(to: url, options: writingOptions)
+                removeLegacyFiles(for: key, keeping: url)
+            } catch {
+                log(error)
+            }
+        }
+        return entries.values.map(\.entry)
     }
 
     /// Removes the file associated with an entry's key.
@@ -150,8 +177,14 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     ///
     /// - Parameter entry: The entry whose key identifies the file to remove.
     public func delete(_ entry: CacheEntry<KeyType, StoredType>) {
+        if !hasLoaded {
+            _ = load()
+        }
         let url = directory.appendingPathComponent(entry.key.stringValue.cacheEntryFileName)
-        try? FileManager.default.removeItem(at: url)
+        let files = (entryFiles.removeValue(forKey: entry.key) ?? []).union([url])
+        for file in files {
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     /// Serializes and writes an entry to the storage directory.
@@ -163,6 +196,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     /// - Parameter entry: The entry to serialize and persist.
     /// - Returns: `true` if serialization, encoding, and writing succeed; otherwise, `false`.
     public func persist(_ entry: CacheEntry<KeyType, StoredType>) -> Bool {
+        if !hasLoaded {
+            _ = load()
+        }
         do {
             let stringKey = entry.key.stringValue
             let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
@@ -170,6 +206,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
             let diskEntry = DiskEntry(key: stringKey, creation: entry.creation, lastAccess: entry.lastAccess, value: data)
             let diskData = try encoder.encode(diskEntry)
             try diskData.write(to: url, options: writingOptions)
+            removeLegacyFiles(for: entry.key, keeping: url)
             return true
         } catch {
             log(error)
@@ -182,6 +219,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     /// This method removes all directory contents, not only cache-entry files. Failures
     /// to enumerate the directory or remove individual items are ignored.
     public func clear() {
+        entryFiles.removeAll()
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
@@ -191,6 +229,23 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
         for url in contents {
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    private func removeLegacyFiles(for key: KeyType, keeping url: URL) {
+        var remaining: Set<URL> = [url]
+        for file in entryFiles[key] ?? [] where file != url {
+            do {
+                try FileManager.default.removeItem(at: file)
+            } catch {
+                remaining.insert(file)
+            }
+        }
+        entryFiles[key] = remaining
+    }
+
+    private struct LoadedEntry {
+        let entry: CacheEntry<KeyType, StoredType>
+        let diskEntry: DiskEntry
     }
 
     /// Private Entry Struct that is used for storing the cache entry along with it's metadata
@@ -235,11 +290,11 @@ private func log(_ error: any Error) {
 private extension String {
     var cacheEntryFileName: String {
         #if canImport(CryptoKit)
-        SHA256.hash(data: Data(utf8))
+        SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
             .map { String(format: "%02x", $0) }
             .joined() + ".cache_entry"
         #else
-        Data(utf8)
+        Data(precomposedStringWithCanonicalMapping.utf8)
             .base64EncodedString()
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
