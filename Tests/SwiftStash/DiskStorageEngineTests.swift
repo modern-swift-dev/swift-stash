@@ -76,19 +76,25 @@ extension ClockDependentTests {
             #expect(loadedEntries.isEmpty)
         }
 
-        @Test func loadHandlesCorruptedFiles() {
+        @Test func loadHandlesCorruptedFiles() throws {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let dirName = "TestLoadCorrupted_\(UUID().uuidString)"
             let engine = createEngineWithDirectory(dirName)
 
-            // Add a valid entry first
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let corrupted = directory.appendingPathComponent("corrupted.cache_entry")
+            try Data("not JSON".utf8).write(to: corrupted)
+
+            // Add a valid entry alongside the corrupt file.
             let entry = CacheEntry(key: "validKey", value: "validValue")
             let persistResult = engine.persist(entry)
             #expect(persistResult == true)
 
-            // Load should work and handle any issues gracefully
+            // Loading must retain the valid entry and remove the corrupt file.
             let loadedEntries = engine.load()
-            #expect(!loadedEntries.isEmpty)
+            #expect(loadedEntries.count == 1)
+            #expect(!FileManager.default.fileExists(atPath: corrupted.path))
             #expect(loadedEntries.first?.key == "validKey")
 
             engine.clear()
