@@ -234,6 +234,25 @@ extension ClockDependentTests {
             #expect(entry?.value.value == "value1")
         }
 
+        @Test func expirationIncludesThresholdBoundaryForEveryPolicy() async {
+            typealias TestCache = Cache<MemoryStorageEngine<String, String>, String>
+            let caches = [
+                await TestCache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine()),
+                await TestCache(policy: .lifo(threshold: 10), storagePolicy: MemoryStorageEngine()),
+                await TestCache(policy: .lru(threshold: 10), storagePolicy: MemoryStorageEngine())
+            ]
+            for cache in caches {
+                await cache.add("old", for: "expired")
+                MonotonicClock.shared.tick(seconds: 1)
+                await cache.add("new", for: "retained")
+                MonotonicClock.shared.tick(seconds: 9)
+
+                await cache.evictExpired()
+
+                #expect(await cache.keys() == ["retained"])
+            }
+        }
+
         @Test func entryReturnsNilForMissingKey() async {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let storage = MemoryStorageEngine<String, TestItem>()

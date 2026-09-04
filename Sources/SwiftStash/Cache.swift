@@ -196,35 +196,22 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         storageEngine.clear()
     }
 
-    /// Removes entries whose age exceeds the eviction policy's threshold.
+    /// Removes entries whose age meets or exceeds the eviction policy's threshold.
     ///
     /// FIFO and LIFO policies compare the creation date; LRU compares the last-access date.
     public func evictExpired() {
+        let expiredKeys: [KeyType]
         switch policy {
-            case let .fifo(threshold):
+            case let .fifo(threshold),
+                 let .lifo(threshold):
                 let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.creation < $1.creation }
-                for value in values where value.creation <= deletionDate {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
-            case let .lifo(threshold):
-                let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.creation > $1.creation }
-                for value in values where value.creation <= deletionDate {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
+                expiredKeys = entries.values.compactMap { $0.creation <= deletionDate ? $0.key : nil }
             case let .lru(threshold):
                 let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
-                let values: [CacheEntry<KeyType, CacheType>] = entries.values.sorted { $0.lastAccess < $1.lastAccess }
-                for value in values where value.lastAccess <= deletionDate {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
+                expiredKeys = entries.values.compactMap { $0.lastAccess <= deletionDate ? $0.key : nil }
+        }
+        for key in expiredKeys {
+            remove(key)
         }
     }
 
