@@ -18,7 +18,7 @@ public typealias CacheableDataType = Sendable
 /// An actor-isolated cache backed by a storage engine.
 ///
 /// The cache loads entries from its storage engine during initialization and persists additions,
-/// subscript reads, and removals through that engine. Use an ``EvictionPolicy`` to choose the
+/// reads, and removals through that engine. Use an ``EvictionPolicy`` to choose the
 /// order used when reducing the cache to a maximum number of entries.
 ///
 /// Example usage:
@@ -99,7 +99,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         Array(entries.keys)
     }
 
-    /// Returns all values currently held by the cache and records an access for each entry.
+    /// Returns all values currently held by the cache and persists an access for each entry.
     ///
     /// - Returns: An unordered array of cached values.
     public func values() -> [CacheType] {
@@ -108,20 +108,24 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
             if var entry = entries[key] {
                 entry.updateLastAccess()
                 entries[key] = entry
+                storageEngine.persist(entry)
                 values.append(entry.value)
             }
         }
         return values
     }
 
-    /// Returns the entry for a key and records an access when it exists.
+    /// Returns the entry for a key and persists an access when it exists.
     ///
     /// - Parameter key: The key identifying the entry.
     /// - Returns: The matching cache entry, or `nil` when the key is not present.
     public func entry(for key: KeyType) -> CacheEntry<KeyType, CacheType>? {
-        var entry = entries[key]
-        entry?.updateLastAccess()
+        guard var entry = entries[key] else {
+            return nil
+        }
+        entry.updateLastAccess()
         entries[key] = entry
+        storageEngine.persist(entry)
         return entry
     }
 

@@ -234,6 +234,55 @@ extension ClockDependentTests {
             #expect(entry?.value.value == "value1")
         }
 
+        private enum ReadMethod: CaseIterable {
+            case subscriptValue
+            case entry
+            case values
+        }
+
+        @Test func readsPersistAccessAcrossReload() async throws {
+            for method in ReadMethod.allCases {
+                MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
+                let directory = "TestReadPersistence_\(UUID().uuidString)"
+                let directoryURL = URL.swiftStashCacheDirectory.appendingPathComponent(directory)
+                defer { try? FileManager.default.removeItem(at: directoryURL) }
+                try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                let storage = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                    directory: directory,
+                    serializer: StringDiskStorageSerializer()
+                )
+                let cache = await Cache(policy: .lru(threshold: 10), storagePolicy: storage)
+                await cache.add([("first", "one"), ("second", "two")])
+                MonotonicClock.shared.tick(seconds: 9)
+
+                switch method {
+                    case .subscriptValue:
+                        #expect(await cache["first"] == "one")
+                    case .entry:
+                        #expect(await cache.entry(for: "first")?.value == "one")
+                    case .values:
+                        #expect(Set(await cache.values()) == ["one", "two"])
+                }
+
+                MonotonicClock.shared.tick(seconds: 2)
+                let reloaded = await Cache(
+                    policy: .lru(threshold: 10),
+                    storagePolicy: DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                        directory: directory,
+                        serializer: StringDiskStorageSerializer()
+                    )
+                )
+                await reloaded.evictExpired()
+                let expectedKeys: Set<String> = method == .values ? ["first", "second"] : ["first"]
+                #expect(Set(await reloaded.keys()) == expectedKeys)
+
+                // The access extends the lifetime only until its own threshold boundary.
+                MonotonicClock.shared.tick(seconds: 8)
+                await reloaded.evictExpired()
+                #expect(await reloaded.isEmpty)
+            }
+        }
+
         @Test func expirationIncludesThresholdBoundaryForEveryPolicy() async {
             typealias TestCache = Cache<MemoryStorageEngine<String, String>, String>
             let caches = [
