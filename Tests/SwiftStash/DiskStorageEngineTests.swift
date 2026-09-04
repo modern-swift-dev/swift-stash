@@ -189,6 +189,19 @@ extension ClockDependentTests {
             enumEngine.clear()
         }
 
+        @Test func withoutOverwritingPreservesExistingValue() throws {
+            let name = "TestWritingOptions_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let engine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                directory: name, serializer: StringDiskStorageSerializer(), options: [.withoutOverwriting]
+            )
+            #expect(engine.persist(CacheEntry(key: "key", value: "old")))
+            #expect(!engine.persist(CacheEntry(key: "key", value: "new")))
+            #expect(engine.load().first?.value == "old")
+        }
+
         @Test func unsupportedStringEncodingReportsPersistenceFailure() throws {
             let name = "TestEncodingFailure_\(UUID().uuidString)"
             let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)

@@ -8,13 +8,7 @@ import CryptoKit
 import os.log
 #endif
 
-private let diskStorageWritingOptions: Data.WritingOptions = {
-    #if os(Linux)
-    []
-    #else
-    [.atomicWrite]
-    #endif
-}()
+private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 
 /// A file-system-backed implementation of ``StorageEngine``.
 ///
@@ -79,13 +73,12 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
     /// Creates an engine that stores entries in a named directory below the app cache directory.
     ///
-    /// The named directory is not created by this initializer. The supplied writing
-    /// options are retained, but writes currently use atomic writes regardless of their value.
+    /// The named directory is not created by this initializer.
     ///
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
     ///   - serializer: The serializer used to convert stored values to and from data.
-    ///   - options: Writing options retained by the engine. They do not currently affect writes.
+    ///   - options: Options passed to file writes.
     public init(
         directory: String,
         serializer: Serializer,
@@ -154,7 +147,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     /// Serializes and writes an entry to the storage directory.
     ///
     /// The entry's key, creation date, last-access date, and serialized value are written.
-    /// A successful write replaces any existing file for the same key and is atomic.
+    /// Writes use the configured options; the default is atomic replacement.
     /// This method does not create the named storage directory.
     ///
     /// - Parameter entry: The entry to serialize and persist.
@@ -166,7 +159,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
             let data = try serializer.serialize(entry.value)
             let diskEntry = DiskEntry(key: stringKey, creation: entry.creation, lastAccess: entry.lastAccess, value: data)
             let diskData = try encoder.encode(diskEntry)
-            try diskData.write(to: url, options: [.atomic])
+            try diskData.write(to: url, options: writingOptions)
             return true
         } catch {
             log(error)
