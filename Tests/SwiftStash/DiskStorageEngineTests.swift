@@ -189,5 +189,14 @@ extension ClockDependentTests {
             enumEngine.clear()
         }
 
+        @Test func unsupportedStringEncodingReportsPersistenceFailure() throws {
+            let name = "TestEncodingFailure_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let engine = DiskStorageEngine(directory: name, serializer: StringDiskStorageSerializer<NSString>(encoding: .ascii))
+            #expect(!engine.persist(CacheEntry(key: "key", value: "🌍")))
+            #expect(engine.load().isEmpty)
+        }
     }
 }

@@ -1,5 +1,11 @@
 import Foundation
 
+/// Errors produced when serializing a string with a configured encoding.
+public enum StringDiskStorageSerializerError: Error, Equatable {
+    /// The string contains characters that the encoding cannot represent.
+    case unrepresentableValue(encoding: String.Encoding)
+}
+
 /// A text-backed serializer for `String` values.
 ///
 /// Values are converted with the encoding supplied at initialization. Use
@@ -25,15 +31,15 @@ public class StringDiskStorageSerializer<SerializedType: NSString>: DiskStorageS
 
     /// Converts a string to data using this serializer's encoding.
     ///
-    /// - Important: `value` must be representable in the configured encoding.
-    ///   Otherwise, the underlying conversion returns `nil` and this implementation
-    ///   traps while unwrapping that result.
     /// - Parameter value: The string to serialize.
     /// - Returns: The encoded data.
-    /// - Throws: This implementation does not throw.
+    /// - Throws: ``StringDiskStorageSerializerError/unrepresentableValue(encoding:)``
+    ///   when the value cannot be represented in the configured encoding.
     public func serialize(_ value: String) throws -> Data {
-        // swiftlint:disable:next force_unwrapping
-        value.data(using: encoding)!
+        guard let data = value.data(using: encoding) else {
+            throw StringDiskStorageSerializerError.unrepresentableValue(encoding: encoding)
+        }
+        return data
     }
 
     /// Converts encoded data to a string using this serializer's encoding.

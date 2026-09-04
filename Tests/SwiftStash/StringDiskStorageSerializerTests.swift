@@ -43,4 +43,12 @@ import Testing
 
         #expect(deserialized == original)
     }
+
+    @Test func serializeUnrepresentableCharactersThrows() {
+        let serializer = StringDiskStorageSerializer<NSString>(encoding: .ascii)
+
+        #expect(throws: StringDiskStorageSerializerError.unrepresentableValue(encoding: .ascii)) {
+            try serializer.serialize("🌍")
+        }
+    }
 }
