@@ -1,10 +1,9 @@
 pre-commit:
-  jobs:
-    - name: format Swift files
+  commands:
+    format-and-lint-swift:
       glob: "*.swift"
-      run: mint run --no-install nicklockwood/SwiftFormat {staged_files} --config .swiftformat --quiet
+      run: make format lint SWIFT_FILES="'{staged_files}'"
       stage_fixed: true
-
-    - name: lint Swift files
-      glob: "*.swift"
-      run: mint run --no-install realm/SwiftLint {staged_files} --config .swiftlint.yml --quiet
+    lint-workflows:
+      glob: ".github/{workflows/*.{yml,yaml},actionlint.{yml,yaml}}"
+      run: make lint-workflows
