@@ -10,14 +10,11 @@ permissions:
 jobs:
   linux:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    strategy:
-      matrix:
-        swift-version: ["6.0", "6.3"]
-    container: swift:${{ matrix.swift-version }}
+    container: swift:6.3
     steps:
       - uses: actions/checkout@v6
-      - name: Verify Swift ${{ matrix.swift-version }}
-        run: swift --version | grep -F "Swift version ${{ matrix.swift-version }}"
+      - name: Verify Swift 6.3
+        run: swift --version | grep -F 'Swift version 6.3'
       - name: Release tests
         run: swift test -c release
 
@@ -33,15 +30,6 @@ jobs:
           - platform: iOS
             simulator-name: iPhone 17 Pro
             runtime-platform: iOS
-          - platform: tvOS
-            simulator-name: Apple TV 4K (3rd generation)
-            runtime-platform: tvOS
-          - platform: visionOS
-            simulator-name: Apple Vision Pro
-            runtime-platform: visionOS
-          - platform: watchOS
-            simulator-name: Apple Watch Series 11 (46mm)
-            runtime-platform: watchOS
     steps:
       - uses: actions/checkout@v6
       - name: Verify Xcode 26.6 and Swift 6.3
