@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       matrix:
         swift-version: ["6.0", "6.3"]
@@ -22,7 +22,7 @@ jobs:
         run: swift test -c release
 
   apple:
-    runs-on: macos-26
+    runs-on: blacksmith-6vcpu-macos-26
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     strategy:
