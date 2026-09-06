@@ -39,3 +39,6 @@ Website/node_modules/
 Website/dist/
 
 .DS_Store
+
+# Generated documentation is published by modern-swift-dev/docs.
+/docs/

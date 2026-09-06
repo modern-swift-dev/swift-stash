@@ -42,7 +42,7 @@ site-validate:
 	npm --prefix Website run check
 	npm --prefix Website run build
 	test -f Website/dist/index.html
-	node Scripts/check-links.mjs docs
+	node Scripts/check-links.mjs .build/site
 
 site-build:
 	bash Scripts/build-site.sh

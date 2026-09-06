@@ -2,8 +2,8 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const siteDirectory = resolve(process.argv[2] ?? fileURLToPath(new URL('../docs', import.meta.url)));
-const siteBasePath = '/swift-stash';
+const siteDirectory = resolve(process.argv[2] ?? fileURLToPath(new URL('../.build/site', import.meta.url)));
+const siteBasePath = '/docs/swift-stash';
 
 if (!existsSync(siteDirectory) || !lstatSync(siteDirectory).isDirectory()) {
   throw new Error(`Site directory does not exist: ${siteDirectory}`);
@@ -37,7 +37,7 @@ function localTarget(rawValue) {
 
   let url;
   try {
-    url = new URL(rawValue, 'https://modern-swift-dev.github.io/swift-stash/');
+    url = new URL(rawValue, 'https://modern-swift-dev.github.io/docs/swift-stash/');
   } catch {
     return { error: `invalid URL: ${rawValue}` };
   }

@@ -4,9 +4,9 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 website_directory="$repository_root/Website"
-output_directory="$repository_root/docs"
+output_directory="$repository_root/.build/site"
 staging_directory="$repository_root/.build/site-staging"
-expected_output_directory="$repository_root/docs"
+expected_output_directory="$repository_root/.build/site"
 
 if [[ "$output_directory" != "$expected_output_directory" ]]; then
     echo "Refusing to replace unexpected output directory: $output_directory" >&2
@@ -26,7 +26,7 @@ swift package \
     --target SwiftStash \
     --disable-indexing \
     --transform-for-static-hosting \
-    --hosting-base-path swift-stash/api \
+    --hosting-base-path docs/swift-stash/api \
     --output-path "$staging_directory/api"
 
 touch "$staging_directory/.nojekyll"

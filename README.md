@@ -2,7 +2,7 @@
 
 SwiftStash is a small, concurrency-safe cache for Swift. It provides an actor-isolated API, configurable FIFO, LIFO, and LRU eviction, and interchangeable memory or disk storage engines.
 
-[Read the guide](https://modern-swift-dev.github.io/swift-stash/) or open the [SwiftStash API reference](https://modern-swift-dev.github.io/swift-stash/api/documentation/swiftstash/).
+[Read the guide](https://modern-swift-dev.github.io/docs/swift-stash/) or open the [SwiftStash API reference](https://modern-swift-dev.github.io/docs/swift-stash/api/documentation/swiftstash/).
 
 ## Requirements
 
@@ -113,7 +113,7 @@ The examples are independent, executable Swift packages:
 - [Disk cache](Examples/disk-cache) - persistent `Codable` values with the JSON serializer.
 - [Custom serializer](Examples/custom-serializer) - storing a custom value with a binary representation.
 
-The [examples guide](https://modern-swift-dev.github.io/swift-stash/examples/) explains each program before showing its complete source.
+The [examples guide](https://modern-swift-dev.github.io/docs/swift-stash/examples/) explains each program before showing its complete source.
 
 Run one from the repository root:
 
@@ -122,6 +122,8 @@ swift run --package-path Examples/memory-cache
 ```
 
 ## Contributing
+
+Documentation sources remain in this repository. The [central documentation repository](https://github.com/modern-swift-dev/docs) builds and publishes the site daily. Local site builds write generated HTML to `.build/site/`.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, common commands, and documentation publishing instructions.
 
