@@ -17,10 +17,6 @@ make test          # Run the Swift package tests
 make lint          # Check the Swift sources with SwiftLint
 make format        # Apply SwiftFormat and SwiftLint fixes
 make documentation # Build the API documentation
-make site-setup    # Install the locked website dependencies
-make site-validate # Type-check and build the Astro site
-make site-build    # Replace .build/site/ with the Astro and DocC output
-make site-preview  # Serve the assembled .build/site/ directory locally
 make test-all      # Test all supported Apple platforms and Linux
 ```
 
@@ -32,15 +28,6 @@ swift test
 
 ## Publishing the documentation site
 
-The documentation sources remain in this repository. The [central documentation repository](https://github.com/modern-swift-dev/docs) builds and publishes them daily at [the module documentation site](https://modern-swift-dev.github.io/docs/swift-stash/). Publish a GitHub release to update the release information on the next scheduled build; publishing is configured in the central repository.
+Guides and examples live in [Documentation/Site](Documentation/Site). The [central documentation repository](https://github.com/modern-swift-dev/docs) owns the shared Astro theme, builds the guides and DocC API reference, and publishes them daily. For local builds and previews, follow the [docs README](https://github.com/modern-swift-dev/docs/blob/main/README.md).
 
-To build and review documentation locally:
-
-```sh
-make site-setup
-make site-build
-make site-validate
-make site-preview
-```
-
-The build fetches the latest published release, builds the Astro pages and static DocC reference, and checks internal links. Generated HTML is written to `.build/site/` and is ignored by Git. Commit documentation source changes only.
+Keep Markdown guides, example source, and Swift documentation comments in this module. Publish a GitHub release to update the version and release information on the next daily build. Commit documentation sources only.

@@ -123,7 +123,7 @@ swift run --package-path Examples/memory-cache
 
 ## Contributing
 
-Documentation sources remain in this repository. The [central documentation repository](https://github.com/modern-swift-dev/docs) builds and publishes the site daily. Local site builds write generated HTML to `.build/site/`.
+Guides and examples live in [Documentation/Site](Documentation/Site). The [central documentation repository](https://github.com/modern-swift-dev/docs) owns the shared Astro theme, builds the guides and DocC API reference, and publishes them daily. For local builds and previews, follow the [docs README](https://github.com/modern-swift-dev/docs/blob/main/README.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, common commands, and documentation publishing instructions.
 
