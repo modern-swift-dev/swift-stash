@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 #if canImport(CryptoKit)
-import CryptoKit
+    import CryptoKit
 #endif
 
 extension ClockDependentTests {
@@ -217,12 +217,12 @@ extension ClockDependentTests {
             )
             // Reproduce the old filename format without Unicode normalization.
             #if canImport(CryptoKit)
-            let filename = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+                let filename = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
             #else
-            let filename = Data(key.utf8).base64EncodedString()
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "=", with: "")
+                let filename = Data(key.utf8).base64EncodedString()
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: "+", with: "-")
+                    .replacingOccurrences(of: "=", with: "")
             #endif
             try encoder.encode(entry).write(to: directory.appendingPathComponent(filename + ".cache_entry"))
         }

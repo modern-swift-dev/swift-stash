@@ -1,11 +1,11 @@
 import Foundation
 
 #if canImport(CryptoKit)
-import CryptoKit
+    import CryptoKit
 #endif
 
 #if canImport(os)
-import os.log
+    import os.log
 #endif
 
 private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
@@ -270,10 +270,10 @@ extension URL {
     static var swiftStashCacheDirectory: URL {
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app-cache"
         #if os(Linux)
-        let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+            let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+                ?? FileManager.default.temporaryDirectory
         #else
-        let baseURL = URL.cachesDirectory
+            let baseURL = URL.cachesDirectory
         #endif
         let url = baseURL.appendingPathComponent("\(bundleIdentifier)-cache")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -283,23 +283,23 @@ extension URL {
 
 private func log(_ error: any Error) {
     #if canImport(os)
-    os_log("%{public}@", log: .default, type: .error, String(describing: error))
+        os_log("%{public}@", log: .default, type: .error, String(describing: error))
     #endif
 }
 
 private extension String {
     var cacheEntryFileName: String {
         #if canImport(CryptoKit)
-        SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined() + ".cache_entry"
+            SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
+                .map { String(format: "%02x", $0) }
+                .joined() + ".cache_entry"
         #else
-        Data(precomposedStringWithCanonicalMapping.utf8)
-            .base64EncodedString()
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "=", with: "")
-            + ".cache_entry"
+            Data(precomposedStringWithCanonicalMapping.utf8)
+                .base64EncodedString()
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "=", with: "")
+                + ".cache_entry"
         #endif
     }
 }

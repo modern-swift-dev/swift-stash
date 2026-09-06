@@ -1,7 +1,7 @@
 import Foundation
 
 #if canImport(Kronos)
-private import Kronos
+    private import Kronos
 #endif
 
 /// A shared wall clock that uses NTP time when available and supports a fixed,
@@ -31,9 +31,9 @@ public final class MonotonicClock: @unchecked Sendable {
         }
 
         #if canImport(Kronos)
-        return Clock.now ?? Date()
+            return Clock.now ?? Date()
         #else
-        return Date()
+            return Date()
         #endif
     }
 
@@ -46,7 +46,7 @@ public final class MonotonicClock: @unchecked Sendable {
             return
         }
         #if canImport(Kronos)
-        Clock.sync()
+            Clock.sync()
         #endif
     }
 

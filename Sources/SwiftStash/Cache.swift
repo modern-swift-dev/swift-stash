@@ -1,15 +1,15 @@
 import Foundation
 
 #if canImport(UIKit) || targetEnvironment(macCatalyst)
-import UIKit
+    import UIKit
 #endif
 
 #if canImport(AppKit) && !targetEnvironment(macCatalyst)
-import AppKit
+    import AppKit
 #endif
 
 #if canImport(WatchKit)
-import WatchKit
+    import WatchKit
 #endif
 
 /// A `Sendable` type that can be stored in a ``Cache``.
