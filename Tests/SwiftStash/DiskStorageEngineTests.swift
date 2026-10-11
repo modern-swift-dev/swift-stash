@@ -105,6 +105,21 @@ extension ClockDependentTests {
             #expect(loadedEntries.isEmpty)
         }
 
+        @Test func clearKeepsFilesItDoesNotOwn() throws {
+            let dirName = "TestClearKeepsOtherFiles_\(UUID().uuidString)"
+            let engine = createEngineWithDirectory(dirName)
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let otherFile = directory.appendingPathComponent("notes.txt")
+            try Data("keep me".utf8).write(to: otherFile)
+            _ = engine.persist(CacheEntry(key: "key1", value: "value1"))
+
+            engine.clear()
+
+            #expect(engine.load().isEmpty)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["notes.txt"])
+        }
+
         @Test func loadHandlesCorruptedFiles() throws {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let dirName = "TestLoadCorrupted_\(UUID().uuidString)"

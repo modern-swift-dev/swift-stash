@@ -216,10 +216,11 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
         }
     }
 
-    /// Removes every immediate item in the storage directory.
+    /// Removes every cache-entry file in the storage directory.
     ///
-    /// This method removes all directory contents, not only cache-entry files. Failures
-    /// to enumerate the directory or remove individual items are ignored.
+    /// Only files with the `cache_entry` extension are removed; other directory contents
+    /// are left in place. Failures to enumerate the directory or remove individual files
+    /// are ignored.
     public func clear() {
         entryFiles.removeAll()
         guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -228,7 +229,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
         ) else {
             return
         }
-        for url in contents {
+        for url in contents where url.pathExtension == "cache_entry" {
             try? FileManager.default.removeItem(at: url)
         }
     }
