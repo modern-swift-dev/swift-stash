@@ -195,7 +195,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     ///
     /// - Parameter entry: The entry to serialize and persist.
     /// - Returns: `true` if serialization, encoding, and writing succeed; otherwise, `false`.
-    public func persist(_ entry: CacheEntry<KeyType, StoredType>) -> Bool {
+    @discardableResult public func persist(_ entry: CacheEntry<KeyType, StoredType>) -> Bool {
         if !hasLoaded {
             _ = load()
         }
