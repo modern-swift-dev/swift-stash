@@ -55,7 +55,7 @@ if let name = await cache["current-user"] {
 await cache.evictUntil(maxCount: 100)
 ```
 
-`Cache` is an actor, so calls from outside its isolation domain use `await`. Values stored in a cache must be `Sendable`.
+`Cache` is an actor, so calls from outside its isolation domain use `await`. Values stored in a cache must be `Sendable`. Each cache runs on its own serial dispatch queue, so blocking disk I/O doesn't hold up the threads Swift concurrency uses for other tasks. Creating a cache doesn't touch storage; it loads its entries when first used.
 
 Each cache has one key type. Use a string-backed enum when the set of keys is known:
 

@@ -35,6 +35,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - `values()` no longer records an access to each entry, so it doesn't change LRU order or lifetimes.
 - Disk entry files hold a small metadata header followed by the raw serialized value, instead of pretty-printed JSON with a base64-encoded value, so they take about a quarter less space. Files from earlier releases are rewritten in the new format when loaded; earlier releases can't read the new format.
 - With the LRU policy, a read updates only the metadata header of its disk entry file instead of rewriting the value. Storage engines can support this by implementing the new `StorageEngine.persistMetadata(_:)` requirement, which has a default implementation.
+- Each cache runs on its own serial dispatch queue, so storage engine I/O no longer blocks a thread of Swift's cooperative pool. Creating a cache no longer loads its entries; it loads them on that queue when first used.
 
 ### Deprecated
 
