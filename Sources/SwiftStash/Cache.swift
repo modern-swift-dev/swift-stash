@@ -1,17 +1,5 @@
 import Foundation
 
-#if canImport(UIKit) || targetEnvironment(macCatalyst)
-    import UIKit
-#endif
-
-#if canImport(AppKit) && !targetEnvironment(macCatalyst)
-    import AppKit
-#endif
-
-#if canImport(WatchKit)
-    import WatchKit
-#endif
-
 /// A `Sendable` type that can be stored in a ``Cache``.
 public typealias CacheableDataType = Sendable
 
