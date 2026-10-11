@@ -28,6 +28,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - The minimum macOS version is 14.
 - swift-docc-plugin is required from 1.5.0 instead of exactly 1.5.0.
 - `EvictionPolicy` is a top-level `Sendable`, `Equatable` enum. `Cache.EvictionPolicy` remains as an alias.
+- `values()` no longer records an access to each entry, so it doesn't change LRU order or lifetimes.
 
 ### Deprecated
 

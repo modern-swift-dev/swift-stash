@@ -190,7 +190,7 @@ struct CacheTests {
         #expect(keys.sorted() == ["a", "b", "c"])
     }
 
-    @Test func valuesReturnsAllValuesAndUpdatesAccess() async {
+    @Test func valuesReturnsAllValues() async {
         let storage = MemoryStorageEngine<String, TestItem>()
         let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
@@ -218,7 +218,6 @@ struct CacheTests {
     private enum ReadMethod: CaseIterable {
         case subscriptValue
         case entry
-        case values
     }
 
     @Test func readsPersistAccessAcrossReload() async throws {
@@ -239,8 +238,6 @@ struct CacheTests {
                     #expect(await cache["first"] == "one")
                 case .entry:
                     #expect(await cache.entry(for: "first")?.value == "one")
-                case .values:
-                    #expect(Set(await cache.values()) == ["one", "two"])
             }
 
             clock.advance(by: 2)
@@ -253,8 +250,7 @@ struct CacheTests {
                 clock: clock
             )
             await reloaded.evictExpired()
-            let expectedKeys: Set<String> = method == .values ? ["first", "second"] : ["first"]
-            #expect(Set(await reloaded.keys()) == expectedKeys)
+            #expect(await reloaded.keys() == ["first"])
 
             // The access extends the lifetime only until its own threshold boundary.
             clock.advance(by: 8)
@@ -394,7 +390,7 @@ struct CacheTests {
         _ = await cache.entry(for: "first")
         _ = await cache.values()
 
-        #expect(storage.persistCount == (policy == .lru(threshold: 10) ? 6 : 2))
+        #expect(storage.persistCount == (policy == .lru(threshold: 10) ? 4 : 2))
     }
 
     @Test(arguments: Self.policies) func containsReportsUnexpiredEntries(policy: EvictionPolicy) async {
@@ -502,6 +498,33 @@ struct CacheTests {
         await cache.add((0 ..< 100).map { ("\($0)", "\($0)") })
 
         #expect(await cache.count == 100)
+    }
+
+    @Test func valuesDoesNotChangeLRUOrder() async {
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        // "b" is older, but sorts after "a", so a tie in access dates would evict "a".
+        await cache.add("older", for: "b")
+        clock.advance(by: 1)
+        await cache.add("newer", for: "a")
+        clock.advance(by: 1)
+
+        #expect(Set(await cache.values()) == ["older", "newer"])
+        clock.advance(by: 1)
+        await cache.evictUntil(maxCount: 1)
+
+        #expect(await cache.keys() == ["a"])
+    }
+
+    @Test func valuesDoesNotExtendLRULifetimes() async {
+        let cache = Cache(policy: .lru(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key")
+        clock.advance(by: 9)
+        #expect(await cache.values() == ["value"])
+
+        clock.advance(by: 1)
+
+        #expect(await cache.values().isEmpty)
+        #expect(await cache.isEmpty)
     }
 
     @Test func entryReturnsNilForMissingKey() async {

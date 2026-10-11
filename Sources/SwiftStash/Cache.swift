@@ -118,14 +118,19 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
         Array(entries.keys)
     }
 
-    /// Returns all unexpired values held by the cache and records an access for each entry.
+    /// Returns all unexpired values held by the cache.
     ///
-    /// Expired entries are removed instead of returned.
+    /// Listing values doesn't record an access to each entry, so it doesn't change LRU
+    /// eviction order or extend LRU lifetimes. Expired entries are removed instead of returned.
     ///
     /// - Returns: An unordered array of cached values.
     public func values() -> [CacheType] {
         let now = clock.now
-        return entries.keys.compactMap { access($0, at: now)?.value }
+        let expiredKeys = entries.values.compactMap { isExpired($0, at: now) ? $0.key : nil }
+        for key in expiredKeys {
+            remove(key)
+        }
+        return entries.values.map(\.value)
     }
 
     /// Returns the entry for a key and records an access when it exists.
