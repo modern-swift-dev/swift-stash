@@ -2,6 +2,8 @@ import Foundation
 
 #if canImport(CryptoKit)
     import CryptoKit
+#else
+    import Crypto
 #endif
 
 #if canImport(os)
@@ -287,19 +289,11 @@ private func log(_ error: any Error) {
     #endif
 }
 
-private extension String {
+extension String {
+    /// A fixed-length filename, so keys of any length stay within file-system name limits.
     var cacheEntryFileName: String {
-        #if canImport(CryptoKit)
-            SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
-                .map { String(format: "%02x", $0) }
-                .joined() + ".cache_entry"
-        #else
-            Data(precomposedStringWithCanonicalMapping.utf8)
-                .base64EncodedString()
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "=", with: "")
-                + ".cache_entry"
-        #endif
+        SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined() + ".cache_entry"
     }
 }

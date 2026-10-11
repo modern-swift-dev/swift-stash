@@ -58,6 +58,20 @@ extension ClockDependentTests {
             #expect(engine.load().map(\.value) == ["testValue"])
         }
 
+        @Test func longKeysPersistAndLoad() {
+            let dirName = "TestLongKeys_\(UUID().uuidString)"
+            let engine = createEngineWithDirectory(dirName)
+            let key = String(repeating: "k", count: 1000)
+
+            #expect(engine.persist(CacheEntry(key: key, value: "testValue")))
+
+            let loadedEntries = engine.load()
+            #expect(loadedEntries.map(\.key) == [key])
+            #expect(loadedEntries.map(\.value) == ["testValue"])
+
+            engine.clear()
+        }
+
         @Test func deleteRemovesEntry() {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let dirName = "TestDelete_\(UUID().uuidString)"
@@ -221,7 +235,14 @@ extension ClockDependentTests {
             let value: Data
         }
 
-        private func writeLegacyEntry(key: String, value: String, creation: Double, lastAccess: Double, directory: URL) throws {
+        private func writeLegacyEntry(
+            key: String,
+            value: String,
+            creation: Double,
+            lastAccess: Double,
+            directory: URL,
+            fileName: String? = nil
+        ) throws {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let entry = LegacyEntry(
@@ -239,7 +260,7 @@ extension ClockDependentTests {
                     .replacingOccurrences(of: "+", with: "-")
                     .replacingOccurrences(of: "=", with: "")
             #endif
-            try encoder.encode(entry).write(to: directory.appendingPathComponent(filename + ".cache_entry"))
+            try encoder.encode(entry).write(to: directory.appendingPathComponent(fileName ?? filename + ".cache_entry"))
         }
 
         @Test func equivalentUnicodeKeysShareOneFileAndStayDeleted() throws {
@@ -300,7 +321,11 @@ extension ClockDependentTests {
             let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: directory) }
-            try writeLegacyEntry(key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1000, directory: directory)
+            // Occupy the canonical filename so the migration write fails.
+            try writeLegacyEntry(
+                key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1000, directory: directory,
+                fileName: "\u{E9}".cacheEntryFileName
+            )
             try writeLegacyEntry(key: "e\u{301}", value: "new", creation: 1001, lastAccess: 1001, directory: directory)
             let engine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
                 directory: name, serializer: StringDiskStorageSerializer(), options: [.withoutOverwriting]
