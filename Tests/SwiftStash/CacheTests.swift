@@ -466,6 +466,51 @@ struct CacheTests {
         )
     }
 
+    @Test(arguments: PolicyKind.allCases) func addEnforcesMaxCount(kind: PolicyKind) async {
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock, maxCount: 2)
+        for key in ["a", "b", "c"] {
+            await cache.add(key, for: key)
+            clock.advance(by: 1)
+        }
+
+        let expected: [String] = switch kind {
+            case .fifo,
+                 .lru: ["b", "c"]
+            case .lifo: ["a", "b"]
+        }
+        #expect(await cache.keys().sorted() == expected)
+    }
+
+    @Test func batchAddEnforcesMaxCount() async {
+        let cache = Cache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock, maxCount: 3)
+        await cache.add("old", for: "old")
+        clock.advance(by: 1)
+
+        await cache.add(["c", "a", "e", "b", "d"].map { ($0, $0) })
+
+        #expect(await cache.keys().sorted() == ["c", "d", "e"])
+    }
+
+    @Test func maxCountRemovesExpiredEntriesFirst() async {
+        // By count alone, LIFO would evict the new entry; the expired one goes first instead.
+        let cache = Cache(policy: .lifo(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock, maxCount: 2)
+        await cache.add("old", for: "old")
+        clock.advance(by: 5)
+        await cache.add("recent", for: "recent")
+        clock.advance(by: 5)
+
+        await cache.add("new", for: "new")
+
+        #expect(await cache.keys().sorted() == ["new", "recent"])
+    }
+
+    @Test func withoutMaxCountAddKeepsEveryEntry() async {
+        let cache = Cache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add((0 ..< 100).map { ("\($0)", "\($0)") })
+
+        #expect(await cache.count == 100)
+    }
+
     @Test func entryReturnsNilForMissingKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
         let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)

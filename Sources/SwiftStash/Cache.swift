@@ -65,6 +65,9 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
     /// The clock used to timestamp entries and find expired ones
     private let clock: any CacheClock
 
+    /// The maximum number of entries kept after each addition, if any
+    private let maxCount: Int?
+
     /// The Entries
     private var entries: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
 
@@ -74,13 +77,18 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
     ///   - policy: The policy used by ``evictExpired()`` and ``evictUntil(maxCount:)``. Defaults to LRU with a 300-second threshold.
     ///   - storageEngine: The storage engine that loads and persists cache entries.
     ///   - clock: The clock used to timestamp entries and find expired ones. Defaults to ``NetworkTimeClock/shared``.
+    ///   - maxCount: The maximum number of entries to keep. After each addition, the cache calls
+    ///     ``evictUntil(maxCount:)`` with this value when it holds more entries. Pass `nil`, the default,
+    ///     to keep any number of entries. Entries loaded from storage aren't evicted until the next addition.
     public init(
         policy: EvictionPolicy = .lru(threshold: 300),
         storageEngine: StorageEngineType,
-        clock: any CacheClock = NetworkTimeClock.shared
+        clock: any CacheClock = NetworkTimeClock.shared,
+        maxCount: Int? = nil
     ) {
         self.policy = policy
         self.clock = clock
+        self.maxCount = maxCount
         self.storageEngine = storageEngine
         var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
         for entry in storageEngine.load() {
@@ -184,6 +192,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
             entries[entry.key] = entry
             storageEngine.persist(entry)
         }
+        enforceMaxCount()
     }
 
     /// Adds a value to the cache for a key.
@@ -193,13 +202,22 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
     /// - Parameters:
     ///   - value: The value to cache.
     ///   - key: The key used to retrieve the value.
-    /// - Returns: The cache entry created for the value.
+    /// - Returns: The cache entry created for the value. With a maximum count and the LIFO policy,
+    ///   the new entry may be evicted immediately, since LIFO removes the newest entries first.
     @discardableResult public func add(_ value: CacheType, for key: KeyType) -> CacheEntry<KeyType, CacheType> {
         let now = clock.now
         let entry = CacheEntry(key: key, value: value, creation: now, lastAccess: now)
         entries[key] = entry
         storageEngine.persist(entry)
+        enforceMaxCount()
         return entry
+    }
+
+    /// Evicts entries when the cache holds more than its maximum count.
+    private func enforceMaxCount() {
+        if let maxCount, entries.count > maxCount {
+            evictUntil(maxCount: maxCount)
+        }
     }
 
     /// Removes the entry for a key from the cache and its storage engine.
