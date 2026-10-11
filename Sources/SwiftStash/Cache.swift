@@ -38,10 +38,13 @@ public enum EvictionPolicy: Sendable, Equatable {
 /// await cache.add("value", for: "key")
 /// let value = await cache["key"]
 /// ```
-public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where StorageEngineType.StoredType == CacheType {
+public actor Cache<StorageEngineType: StorageEngine> {
 
     /// The type used to identify entries in this cache.
     public typealias KeyType = StorageEngineType.KeyType
+
+    /// The type of values stored in this cache.
+    public typealias CacheType = StorageEngineType.StoredType
 
     /// The order used to evict entries from the cache.
     public typealias EvictionPolicy = SwiftStash.EvictionPolicy

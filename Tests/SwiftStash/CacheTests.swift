@@ -260,7 +260,7 @@ struct CacheTests {
     }
 
     @Test func expirationIncludesThresholdBoundaryForEveryPolicy() async {
-        typealias TestCache = Cache<MemoryStorageEngine<String, String>, String>
+        typealias TestCache = Cache<MemoryStorageEngine<String, String>>
         let caches = [
             TestCache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine(), clock: clock),
             TestCache(policy: .lifo(threshold: 10), storageEngine: MemoryStorageEngine(), clock: clock),
@@ -283,8 +283,20 @@ struct CacheTests {
     /// The eviction policies, each with a 10-second threshold.
     static let policies: [EvictionPolicy] = [.fifo(threshold: 10), .lifo(threshold: 10), .lru(threshold: 10)]
 
+    @Test func cacheTypeIsDerivedFromTheStorageEngine() async {
+        typealias IntCache = Cache<MemoryStorageEngine<String, Int>>
+        let valueType: IntCache.CacheType.Type = Int.self
+        let keyType: IntCache.KeyType.Type = String.self
+        #expect(valueType == Int.self)
+        #expect(keyType == String.self)
+
+        let cache: IntCache = Cache(storageEngine: MemoryStorageEngine())
+        await cache.add(42, for: "answer")
+        #expect(await cache["answer"] == 42)
+    }
+
     @Test func nestedEvictionPolicyNameRefersToTheSharedType() {
-        let nested: Cache<MemoryStorageEngine<String, String>, String>.EvictionPolicy = .lru(threshold: 10)
+        let nested: Cache<MemoryStorageEngine<String, String>>.EvictionPolicy = .lru(threshold: 10)
         let shared: EvictionPolicy = nested
         #expect(shared == .lru(threshold: 10))
         #expect(shared != .fifo(threshold: 10))
@@ -448,7 +460,7 @@ struct CacheTests {
         #expect(await cache["key"] == "value")
     }
 
-    private func makeCacheSynchronously(directory: String) -> Cache<DiskStorageEngine<String, String, TextDiskStorageSerializer>, String> {
+    private func makeCacheSynchronously(directory: String) -> Cache<DiskStorageEngine<String, String, TextDiskStorageSerializer>> {
         Cache(
             storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
             clock: clock
@@ -726,19 +738,19 @@ struct CacheTests {
 
 /// Calls deprecated API through a protocol so the tests compile without deprecation warnings.
 private protocol DeprecatedCacheAPI {
-    func makeCache() -> Cache<MemoryStorageEngine<String, String>, String>
-    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>, String>) async -> Int
+    func makeCache() -> Cache<MemoryStorageEngine<String, String>>
+    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>>) async -> Int
     func isCacheable(_ type: (some Sendable).Type) -> Bool
 }
 
 private struct DeprecatedCacheAPICalls: DeprecatedCacheAPI {
     @available(*, deprecated)
-    func makeCache() -> Cache<MemoryStorageEngine<String, String>, String> {
+    func makeCache() -> Cache<MemoryStorageEngine<String, String>> {
         Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine())
     }
 
     @available(*, deprecated)
-    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>, String>) async -> Int {
+    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>>) async -> Int {
         await cache.evictUntil(maxNbItems: maxNbItems)
     }
 

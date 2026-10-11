@@ -16,6 +16,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 
 ### Changed
 
+- **Breaking:** `Cache` has a single generic parameter, its storage engine. Replace `Cache<Engine, Value>` with `Cache<Engine>`; the value type is available as `Cache.CacheType`.
 - Reads (the subscript, `entry(for:)`, and `values()`) no longer return expired entries; reading one removes it.
 - Caches with the FIFO or LIFO policy no longer persist an access on every read. LRU caches still do.
 - `Cache.init` is synchronous. Existing `await Cache(...)` calls still compile, with a warning.
