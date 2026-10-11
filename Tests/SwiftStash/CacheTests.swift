@@ -364,6 +364,20 @@ struct CacheTests {
         #expect(reloaded.load().isEmpty)
     }
 
+    @Test(arguments: PolicyKind.allCases) func evictionBreaksDateTiesByKey(kind: PolicyKind) async {
+        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add(["c", "a", "e", "b", "d"].map { ($0, $0) })
+
+        await cache.evictUntil(maxNbItems: 2)
+
+        let expected: [String] = switch kind {
+            case .fifo,
+                 .lru: ["d", "e"]
+            case .lifo: ["a", "b"]
+        }
+        #expect(await cache.keys().sorted() == expected)
+    }
+
     @Test func entryReturnsNilForMissingKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)

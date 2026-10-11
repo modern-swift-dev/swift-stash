@@ -226,7 +226,9 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Removes expired entries, then evicts entries until the cache contains at most a given number of items.
     ///
     /// A nonpositive maximum clears the cache. When further eviction is needed, the configured
-    /// policy determines which entries are removed first.
+    /// policy determines which entries are removed first. Entries with equal dates, such as
+    /// those added together in one batch, are ordered by their keys' string values:
+    /// FIFO and LRU remove the lowest keys first, and LIFO removes the highest keys first.
     ///
     /// - Parameter maxNbItems: The maximum number of entries to retain.
     /// - Returns: The number of entries remaining in the cache.
@@ -250,31 +252,29 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         let nbEntriesToDelete = entries.count - max
 
         // Evict according to the eviction policy
-        switch policy {
-            case .fifo:
-                let values = entries.values.sorted { $0.creation < $1.creation }.prefix(nbEntriesToDelete)
-                for value in values {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
-            case .lifo:
-                let values = entries.values.sorted { $0.creation > $1.creation }.prefix(nbEntriesToDelete)
-                for value in values {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
-            case .lru:
-                let values = entries.values.sorted { $0.lastAccess < $1.lastAccess }.prefix(nbEntriesToDelete)
-                for value in values {
-                    if let entry = entries.removeValue(forKey: value.key) {
-                        storageEngine.delete(entry)
-                    }
-                }
+        let values = entries.values.sorted(by: evictsBefore).prefix(nbEntriesToDelete)
+        for value in values {
+            if let entry = entries.removeValue(forKey: value.key) {
+                storageEngine.delete(entry)
+            }
         }
 
         return entries.count
+    }
+
+    /// Whether the eviction policy removes one entry before another.
+    ///
+    /// Entries with equal dates are ordered by their keys' string values, so the order
+    /// doesn't depend on dictionary iteration order.
+    private func evictsBefore(_ lhs: CacheEntry<KeyType, CacheType>, _ rhs: CacheEntry<KeyType, CacheType>) -> Bool {
+        switch policy {
+            case .fifo:
+                (lhs.creation, lhs.key.stringValue) < (rhs.creation, rhs.key.stringValue)
+            case .lifo:
+                (lhs.creation, lhs.key.stringValue) > (rhs.creation, rhs.key.stringValue)
+            case .lru:
+                (lhs.lastAccess, lhs.key.stringValue) < (rhs.lastAccess, rhs.key.stringValue)
+        }
     }
 }
 
