@@ -21,9 +21,9 @@ public class JsonDiskStorageSerializer<SerializedType: Codable>: DiskStorageSeri
     ///
     /// - Parameters:
     ///   - encoder: The encoder used to serialize values. The default is a new
-    ///     ``JSONEncoder``.
+    ///     `JSONEncoder`.
     ///   - decoder: The decoder used to deserialize data. The default is a new
-    ///     ``JSONDecoder``.
+    ///     `JSONDecoder`.
     public init(encoder: JSONEncoder = JSONEncoder(), decoder: JSONDecoder = JSONDecoder()) {
         self.encoder = encoder
         self.decoder = decoder
