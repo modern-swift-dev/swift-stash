@@ -5,8 +5,8 @@ public typealias CacheableDataType = Sendable
 
 /// An actor-isolated cache backed by a storage engine.
 ///
-/// The cache loads entries from its storage engine during initialization and persists additions,
-/// reads, and removals through that engine. Use an ``EvictionPolicy`` to choose the
+/// The cache loads entries from its storage engine during initialization and persists additions
+/// and removals through that engine. With the LRU policy, it also persists the access date of each read. Use an ``EvictionPolicy`` to choose the
 /// order used when reducing the cache to a maximum number of entries.
 ///
 /// Example usage:
@@ -100,7 +100,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         Array(entries.keys)
     }
 
-    /// Returns all unexpired values held by the cache and persists an access for each entry.
+    /// Returns all unexpired values held by the cache and records an access for each entry.
     ///
     /// Expired entries are removed instead of returned.
     ///
@@ -110,7 +110,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         return entries.keys.compactMap { access($0, at: now)?.value }
     }
 
-    /// Returns the entry for a key and persists an access when it exists.
+    /// Returns the entry for a key and records an access when it exists.
     ///
     /// An expired entry is removed instead of returned.
     ///
@@ -120,7 +120,23 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         access(key, at: clock.now)
     }
 
+    /// Returns whether the cache holds an unexpired entry for a key.
+    ///
+    /// Unlike reading the value, this method doesn't record an access, so it doesn't
+    /// affect LRU eviction order.
+    ///
+    /// - Parameter key: The key identifying the entry.
+    /// - Returns: `true` when the cache holds an unexpired entry for `key`; otherwise, `false`.
+    public func contains(_ key: KeyType) -> Bool {
+        guard let entry = entries[key] else {
+            return false
+        }
+        return !isExpired(entry, at: clock.now)
+    }
+
     /// Records an access to an unexpired entry, or removes the entry if it has expired.
+    ///
+    /// Only the LRU policy depends on access dates, so other policies don't persist accesses.
     private func access(_ key: KeyType, at now: Date) -> CacheEntry<KeyType, CacheType>? {
         guard var entry = entries[key] else {
             return nil
@@ -131,7 +147,9 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         }
         entry.updateLastAccess(at: now)
         entries[key] = entry
-        storageEngine.persist(entry)
+        if case .lru = policy {
+            storageEngine.persist(entry)
+        }
         return entry
     }
 
@@ -187,7 +205,8 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
 
     /// Accesses the value associated with a key.
     ///
-    /// Reading an existing value updates its last-access date and persists the updated entry.
+    /// Reading an existing value updates its last-access date. With the LRU policy, the updated
+    /// entry is also persisted, so the access survives a reload.
     /// Reading an expired value removes its entry and returns `nil`.
     /// Assigning `nil` removes the entry; assigning a non-`nil` value creates or replaces it.
     ///

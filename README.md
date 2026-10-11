@@ -103,7 +103,7 @@ Choose a policy when creating a cache:
 - `lifo(threshold:)` removes the newest entries first when reducing by count.
 - `lru(threshold:)` removes the least recently accessed entries first.
 
-The threshold is measured in seconds. Reads never return an expired entry: reading one removes it and returns `nil`. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxNbItems:)` to remove expired entries and enforce a maximum count. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
+The threshold is measured in seconds. Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxNbItems:)` to remove expired entries and enforce a maximum count. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
 
 ## Time
 

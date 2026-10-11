@@ -296,7 +296,7 @@ struct CacheTests {
         case lifo
         case lru
 
-        var policy: Cache<MemoryStorageEngine<String, String>, String>.EvictionPolicy {
+        func policy<Engine: StorageEngine>() -> Cache<Engine, Engine.StoredType>.EvictionPolicy {
             switch self {
                 case .fifo: .fifo(threshold: 10)
                 case .lifo: .lifo(threshold: 10)
@@ -308,7 +308,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func subscriptDoesNotReturnExpiredValues(
         kind: PolicyKind
     ) async {
-        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -319,7 +319,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func entryDoesNotReturnExpiredEntries(
         kind: PolicyKind
     ) async {
-        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -330,7 +330,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func valuesSkipsExpiredValues(
         kind: PolicyKind
     ) async {
-        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("old", for: "expired")
         clock.advance(by: 5)
         await cache.add("new", for: "fresh")
@@ -343,7 +343,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func valuesReadJustBeforeExpiryAreReturned(
         kind: PolicyKind
     ) async {
-        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 9.999)
 
@@ -365,7 +365,7 @@ struct CacheTests {
     }
 
     @Test(arguments: PolicyKind.allCases) func evictionBreaksDateTiesByKey(kind: PolicyKind) async {
-        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add(["c", "a", "e", "b", "d"].map { ($0, $0) })
 
         await cache.evictUntil(maxNbItems: 2)
@@ -376,6 +376,63 @@ struct CacheTests {
             case .lifo: ["a", "b"]
         }
         #expect(await cache.keys().sorted() == expected)
+    }
+
+    /// A storage engine that counts persisted entries.
+    private final class CountingStorageEngine: StorageEngine, @unchecked Sendable {
+        private(set) var persistCount = 0
+
+        func load() -> [CacheEntry<String, String>] {
+            []
+        }
+
+        func delete(_: CacheEntry<String, String>) {}
+        func persist(_: CacheEntry<String, String>) -> Bool {
+            persistCount += 1
+            return true
+        }
+
+        func clear() {}
+    }
+
+    @Test(arguments: PolicyKind.allCases) func readsPersistAccessOnlyForLRU(kind: PolicyKind) async {
+        let storage = CountingStorageEngine()
+        let cache = await Cache(policy: kind.policy(), storagePolicy: storage, clock: clock)
+        await cache.add("one", for: "first")
+        await cache.add("two", for: "second")
+        #expect(storage.persistCount == 2)
+
+        _ = await cache["first"]
+        _ = await cache.entry(for: "first")
+        _ = await cache.values()
+
+        #expect(storage.persistCount == (kind == .lru ? 6 : 2))
+    }
+
+    @Test(arguments: PolicyKind.allCases) func containsReportsUnexpiredEntries(kind: PolicyKind) async {
+        let cache = await Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key")
+
+        #expect(await cache.contains("key"))
+        #expect(await !cache.contains("missing"))
+
+        clock.advance(by: 10)
+        #expect(await !cache.contains("key"))
+    }
+
+    @Test func containsDoesNotRecordAccess() async {
+        let storage = CountingStorageEngine()
+        let cache = await Cache(policy: .lru(threshold: 10), storagePolicy: storage, clock: clock)
+        await cache.add("one", for: "first")
+        clock.advance(by: 1)
+        await cache.add("two", for: "second")
+        clock.advance(by: 1)
+
+        #expect(await cache.contains("first"))
+        await cache.evictUntil(maxNbItems: 1)
+
+        #expect(storage.persistCount == 2)
+        #expect(await cache.keys() == ["second"])
     }
 
     @Test func entryReturnsNilForMissingKey() async {
