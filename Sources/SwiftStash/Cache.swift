@@ -4,6 +4,25 @@ import Foundation
 @available(*, deprecated, renamed: "Sendable")
 public typealias CacheableDataType = Sendable
 
+/// The order used to evict entries from a ``Cache``, and the age at which entries expire.
+public enum EvictionPolicy: Sendable, Equatable {
+
+    /// Evicts entries in first-in, first-out order.
+    ///
+    /// - Parameter threshold: The maximum age, in seconds, before an entry is considered expired.
+    case fifo(threshold: TimeInterval)
+
+    /// Evicts entries in last-in, first-out order.
+    ///
+    /// - Parameter threshold: The maximum age, in seconds, before an entry is considered expired.
+    case lifo(threshold: TimeInterval)
+
+    /// Evicts entries in least-recently-used order.
+    ///
+    /// - Parameter threshold: The maximum interval, in seconds, since an entry was last accessed before it is considered expired.
+    case lru(threshold: TimeInterval)
+}
+
 /// An actor-isolated cache backed by a storage engine.
 ///
 /// The cache loads entries from its storage engine during initialization and persists additions
@@ -25,24 +44,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where 
     public typealias KeyType = StorageEngineType.KeyType
 
     /// The order used to evict entries from the cache.
-    public enum EvictionPolicy {
-
-        /// Evicts entries in first-in, first-out order.
-        ///
-        /// - Parameter threshold: The maximum age, in seconds, before an entry is considered expired.
-        case fifo(threshold: TimeInterval)
-
-        /// Evicts entries in last-in, first-out order.
-        ///
-        /// - Parameter threshold: The maximum age, in seconds, before an entry is considered expired.
-        case lifo(threshold: TimeInterval)
-
-        /// Evicts entries in least-recently-used order.
-        ///
-        /// - Parameter threshold: The maximum interval, in seconds, since an entry was last accessed before it is considered expired.
-        case lru(threshold: TimeInterval)
-
-    }
+    public typealias EvictionPolicy = SwiftStash.EvictionPolicy
 
     /// A Boolean value indicating whether the cache contains no entries.
     public var isEmpty: Bool {

@@ -27,6 +27,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - Eviction breaks ties between equal dates by key, so the order no longer varies between runs.
 - The minimum macOS version is 14.
 - swift-docc-plugin is required from 1.5.0 instead of exactly 1.5.0.
+- `EvictionPolicy` is a top-level `Sendable`, `Equatable` enum. `Cache.EvictionPolicy` remains as an alias.
 
 ### Deprecated
 

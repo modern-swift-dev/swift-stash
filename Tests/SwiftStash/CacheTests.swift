@@ -284,24 +284,19 @@ struct CacheTests {
     }
 
     /// The eviction policies, each with a 10-second threshold.
-    enum PolicyKind: CaseIterable {
-        case fifo
-        case lifo
-        case lru
+    static let policies: [EvictionPolicy] = [.fifo(threshold: 10), .lifo(threshold: 10), .lru(threshold: 10)]
 
-        func policy<Engine: StorageEngine>() -> Cache<Engine, Engine.StoredType>.EvictionPolicy {
-            switch self {
-                case .fifo: .fifo(threshold: 10)
-                case .lifo: .lifo(threshold: 10)
-                case .lru: .lru(threshold: 10)
-            }
-        }
+    @Test func nestedEvictionPolicyNameRefersToTheSharedType() {
+        let nested: Cache<MemoryStorageEngine<String, String>, String>.EvictionPolicy = .lru(threshold: 10)
+        let shared: EvictionPolicy = nested
+        #expect(shared == .lru(threshold: 10))
+        #expect(shared != .fifo(threshold: 10))
     }
 
-    @Test(arguments: PolicyKind.allCases) func subscriptDoesNotReturnExpiredValues(
-        kind: PolicyKind
+    @Test(arguments: Self.policies) func subscriptDoesNotReturnExpiredValues(
+        policy: EvictionPolicy
     ) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -309,10 +304,10 @@ struct CacheTests {
         #expect(await cache.isEmpty)
     }
 
-    @Test(arguments: PolicyKind.allCases) func entryDoesNotReturnExpiredEntries(
-        kind: PolicyKind
+    @Test(arguments: Self.policies) func entryDoesNotReturnExpiredEntries(
+        policy: EvictionPolicy
     ) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -320,10 +315,10 @@ struct CacheTests {
         #expect(await cache.isEmpty)
     }
 
-    @Test(arguments: PolicyKind.allCases) func valuesSkipsExpiredValues(
-        kind: PolicyKind
+    @Test(arguments: Self.policies) func valuesSkipsExpiredValues(
+        policy: EvictionPolicy
     ) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("old", for: "expired")
         clock.advance(by: 5)
         await cache.add("new", for: "fresh")
@@ -333,10 +328,10 @@ struct CacheTests {
         #expect(await cache.keys() == ["fresh"])
     }
 
-    @Test(arguments: PolicyKind.allCases) func valuesReadJustBeforeExpiryAreReturned(
-        kind: PolicyKind
+    @Test(arguments: Self.policies) func valuesReadJustBeforeExpiryAreReturned(
+        policy: EvictionPolicy
     ) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 9.999)
 
@@ -357,13 +352,13 @@ struct CacheTests {
         #expect(reloaded.load().isEmpty)
     }
 
-    @Test(arguments: PolicyKind.allCases) func evictionBreaksDateTiesByKey(kind: PolicyKind) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+    @Test(arguments: Self.policies) func evictionBreaksDateTiesByKey(policy: EvictionPolicy) async {
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add(["c", "a", "e", "b", "d"].map { ($0, $0) })
 
         await cache.evictUntil(maxCount: 2)
 
-        let expected: [String] = switch kind {
+        let expected: [String] = switch policy {
             case .fifo,
                  .lru: ["d", "e"]
             case .lifo: ["a", "b"]
@@ -388,9 +383,9 @@ struct CacheTests {
         func clear() {}
     }
 
-    @Test(arguments: PolicyKind.allCases) func readsPersistAccessOnlyForLRU(kind: PolicyKind) async {
+    @Test(arguments: Self.policies) func readsPersistAccessOnlyForLRU(policy: EvictionPolicy) async {
         let storage = CountingStorageEngine()
-        let cache = Cache(policy: kind.policy(), storageEngine: storage, clock: clock)
+        let cache = Cache(policy: policy, storageEngine: storage, clock: clock)
         await cache.add("one", for: "first")
         await cache.add("two", for: "second")
         #expect(storage.persistCount == 2)
@@ -399,11 +394,11 @@ struct CacheTests {
         _ = await cache.entry(for: "first")
         _ = await cache.values()
 
-        #expect(storage.persistCount == (kind == .lru ? 6 : 2))
+        #expect(storage.persistCount == (policy == .lru(threshold: 10) ? 6 : 2))
     }
 
-    @Test(arguments: PolicyKind.allCases) func containsReportsUnexpiredEntries(kind: PolicyKind) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+    @Test(arguments: Self.policies) func containsReportsUnexpiredEntries(policy: EvictionPolicy) async {
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
 
         #expect(await cache.contains("key"))
@@ -466,14 +461,14 @@ struct CacheTests {
         )
     }
 
-    @Test(arguments: PolicyKind.allCases) func addEnforcesMaxCount(kind: PolicyKind) async {
-        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock, maxCount: 2)
+    @Test(arguments: Self.policies) func addEnforcesMaxCount(policy: EvictionPolicy) async {
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock, maxCount: 2)
         for key in ["a", "b", "c"] {
             await cache.add(key, for: key)
             clock.advance(by: 1)
         }
 
-        let expected: [String] = switch kind {
+        let expected: [String] = switch policy {
             case .fifo,
                  .lru: ["b", "c"]
             case .lifo: ["a", "b"]
