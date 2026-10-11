@@ -37,15 +37,17 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - With the LRU policy, a read updates only the metadata header of its disk entry file instead of rewriting the value. Storage engines can support this by implementing the new `StorageEngine.persistMetadata(_:)` requirement, which has a default implementation.
 - Each cache runs on its own serial dispatch queue, so storage engine I/O no longer blocks a thread of Swift's cooperative pool. Creating a cache no longer loads its entries; it loads them on that queue when first used.
 
-### Deprecated
+### Removed
 
-- `MonotonicClock`, renamed `NetworkTimeClock`, and its test controls (`set(unixTimestamp:)`, `reset(...)`, and `tick(...)`). Pass a `ManualClock` to the cache instead.
-- `Date.monotonic` and `Date.timeIntervalSinceMonotonic`.
-- `Cache.init(policy:storagePolicy:clock:)`, renamed `init(policy:storageEngine:clock:)`.
-- `Cache.evictUntil(maxNbItems:)`, renamed `evictUntil(maxCount:)`.
-- `CacheableDataType`; use `Sendable`.
-- The `Cache` subscript setter, which code outside the cache can't call. Use `add(_:for:)` and `remove(_:)`.
-- `StringDiskStorageSerializer`; use `TextDiskStorageSerializer`.
+These are breaking changes. Each removed API has a replacement:
+
+- `MonotonicClock` is renamed `NetworkTimeClock`. Its test controls (`set(unixTimestamp:)`, `reset(...)`, and `tick(...)`) are removed; pass a `ManualClock` to the cache instead.
+- `Date.monotonic` and `Date.timeIntervalSinceMonotonic` are removed; use `NetworkTimeClock.shared.now`.
+- `Cache.init(policy:storagePolicy:clock:)` is renamed `init(policy:storageEngine:clock:)`.
+- `Cache.evictUntil(maxNbItems:)` is renamed `evictUntil(maxCount:)`.
+- `CacheableDataType` is removed; use `Sendable`.
+- The `Cache` subscript setter is removed, since code outside the cache can't call it. Use `add(_:for:expiresAfter:)` and `remove(_:)`.
+- `StringDiskStorageSerializer<NSString>` is replaced by `TextDiskStorageSerializer`, and `StringDiskStorageSerializerError` is renamed `TextDiskStorageSerializerError`.
 
 ### Fixed
 

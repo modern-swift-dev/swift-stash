@@ -1,9 +1,5 @@
 import Foundation
 
-/// A `Sendable` type that can be stored in a ``Cache``.
-@available(*, deprecated, renamed: "Sendable")
-public typealias CacheableDataType = Sendable
-
 /// The order used to evict entries from a ``Cache``, and the age at which entries expire.
 public enum EvictionPolicy: Sendable, Equatable {
 
@@ -182,16 +178,6 @@ public actor Cache<StorageEngineType: StorageEngine> {
         }
         slots = loaded
         loadedTotalCost = loaded.values.reduce(0) { $0 + ($1.metadata.cost ?? 0) }
-    }
-
-    /// Creates a cache and loads any entries provided by its storage engine.
-    @available(*, deprecated, renamed: "init(policy:storageEngine:clock:)")
-    public init(
-        policy: EvictionPolicy = .lru(threshold: 300),
-        storagePolicy: StorageEngineType,
-        clock: any CacheClock = NetworkTimeClock.shared
-    ) {
-        self.init(policy: policy, storageEngine: storagePolicy, clock: clock)
     }
 
     /// Returns all keys currently held by the cache.
@@ -423,26 +409,13 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// Reading an existing value updates its last-access date. With the LRU policy, the updated
     /// metadata is also persisted, so the access survives a reload.
     /// Reading an expired value removes its entry and returns `nil`.
-    ///
-    /// The setter is deprecated because code outside the cache's actor can't assign through it.
-    /// Use ``add(_:for:expiresAfter:)`` and ``remove(_:)`` instead.
+    /// To add or remove values, use ``add(_:for:expiresAfter:)`` and ``remove(_:)``.
     ///
     /// - Parameter key: The key of the entry to access.
     /// - Returns: The cached value, or `nil` if the key is not present.
     public subscript(key: KeyType) -> CacheType? {
-        get {
-            loadIfNeeded()
-            return access(key, at: clock.now)?.value
-        }
-        @available(*, deprecated, message: "Use add(_:for:) or remove(_:).")
-        set {
-            loadIfNeeded()
-            guard let value = newValue else {
-                remove(key)
-                return
-            }
-            add(value, for: key)
-        }
+        loadIfNeeded()
+        return access(key, at: clock.now)?.value
     }
 
     /// Removes all entries from the cache and clears its storage engine.
@@ -498,12 +471,6 @@ public actor Cache<StorageEngineType: StorageEngine> {
         }
 
         return slots.count
-    }
-
-    /// Removes expired entries, then evicts entries until the cache contains at most a given number of items.
-    @available(*, deprecated, renamed: "evictUntil(maxCount:)")
-    @discardableResult public func evictUntil(maxNbItems max: Int) -> Int {
-        evictUntil(maxCount: max)
     }
 
     /// The entries' metadata in the order the eviction policy removes them.
