@@ -105,9 +105,19 @@ Choose a policy when creating a cache:
 
 The threshold is measured in seconds. Call `evictExpired()` to remove expired entries, or `evictUntil(maxNbItems:)` to remove expired entries and enforce a maximum count. Eviction is explicit; SwiftStash does not start a background timer.
 
-## Testing
+## Time
 
-A cache reads the time from its clock, which defaults to `NetworkTimeClock.shared`. Pass a `ManualClock` to test expiration and eviction without waiting for real time to pass:
+A cache reads the time from its clock, which defaults to `NetworkTimeClock.shared`. That clock uses the system date until you synchronize it with network time. On iOS, macOS, tvOS, and Mac Catalyst, synchronize it once early in your app's lifetime so expiration doesn't depend on the device's date setting:
+
+```swift
+NetworkTimeClock.shared.synchronize()
+```
+
+Synchronization uses [Kronos](https://github.com/MobileNativeFoundation/Kronos) to query NTP servers and finishes in the background; the clock keeps using the system date until it succeeds. On watchOS, visionOS, and Linux, the clock always uses the system date.
+
+### Testing
+
+Pass a `ManualClock` to test expiration and eviction without waiting for real time to pass:
 
 ```swift
 let clock = ManualClock()

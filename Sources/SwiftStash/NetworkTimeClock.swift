@@ -40,8 +40,12 @@ public final class NetworkTimeClock: CacheClock, @unchecked Sendable {
 
     /// Starts NTP synchronization when the clock isn't using a controlled date.
     ///
-    /// This method has no effect on platforms where Kronos isn't available or
-    /// after a controlled date has been set.
+    /// The clock uses the system date until you call this method and synchronization
+    /// succeeds. Call it once early in your app's lifetime. Synchronization queries NTP
+    /// servers in the background and returns immediately.
+    ///
+    /// This method has no effect on platforms where Kronos isn't available (watchOS,
+    /// visionOS, and Linux) or after a controlled date has been set.
     public func synchronize() {
         guard lock.withLock({ controlledDate == nil }) else {
             return
