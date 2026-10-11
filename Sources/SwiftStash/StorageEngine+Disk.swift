@@ -13,8 +13,8 @@ private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 /// A file-system-backed implementation of ``StorageEngine``.
 ///
 /// The engine serializes each entry with `Serializer` and writes it as a separate
-/// file below the app cache directory. The named directory must already exist before
-/// calling ``persist(_:)``; this type does not create it.
+/// file in a named directory below the app cache directory. The engine creates the
+/// named directory when it is initialized.
 ///
 /// Example:
 /// ```swift
@@ -47,7 +47,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
     /// Creates an engine that stores entries in a named directory below the app cache directory.
     ///
-    /// The named directory is not created by this initializer.
+    /// The named directory is created if it doesn't already exist.
     ///
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
@@ -61,7 +61,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
     /// Creates an engine for a typed key that stores entries in a named cache directory.
     ///
-    /// The named directory is not created by this initializer.
+    /// The named directory is created if it doesn't already exist.
     ///
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
@@ -77,7 +77,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
     /// Creates an engine that stores entries in a named directory below the app cache directory.
     ///
-    /// The named directory is not created by this initializer.
+    /// The named directory is created if it doesn't already exist.
     ///
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
@@ -89,6 +89,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
         options: Data.WritingOptions
     ) {
         self.directory = URL.swiftStashCacheDirectory.appendingPathComponent(directory)
+        try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         writingOptions = options
         self.serializer = serializer
 
@@ -191,7 +192,6 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
     ///
     /// The entry's key, creation date, last-access date, and serialized value are written.
     /// Writes use the configured options; the default is atomic replacement.
-    /// This method does not create the named storage directory.
     ///
     /// - Parameter entry: The entry to serialize and persist.
     /// - Returns: `true` if serialization, encoding, and writing succeed; otherwise, `false`.

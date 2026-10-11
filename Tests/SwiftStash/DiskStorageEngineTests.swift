@@ -43,6 +43,21 @@ extension ClockDependentTests {
             engine.clear()
         }
 
+        @Test func initCreatesMissingDirectory() {
+            let dirName = "TestCreatesDirectory_\(UUID().uuidString)"
+            let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            #expect(!FileManager.default.fileExists(atPath: directory.path))
+
+            let engine = DiskStorageEngine(directory: dirName, serializer: StringDiskStorageSerializer<NSString>())
+
+            var isDirectory: ObjCBool = false
+            #expect(FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory))
+            #expect(isDirectory.boolValue)
+            #expect(engine.persist(CacheEntry(key: "testKey", value: "testValue")))
+            #expect(engine.load().map(\.value) == ["testValue"])
+        }
+
         @Test func deleteRemovesEntry() {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let dirName = "TestDelete_\(UUID().uuidString)"

@@ -9,7 +9,6 @@ private struct Profile: Codable, Identifiable, Sendable {
 @main private enum DiskCacheExample {
     static func main() async throws {
         let directoryName = "profile-example"
-        try createCacheDirectory(named: directoryName)
 
         let storage = DiskStorageEngine(
             directory: directoryName,
@@ -26,17 +25,5 @@ private struct Profile: Codable, Identifiable, Sendable {
         if let cachedProfile = await cache[profile.id] {
             print("Loaded from disk-backed cache: \(cachedProfile.displayName)")
         }
-    }
-
-    private static func createCacheDirectory(named name: String) throws {
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app-cache"
-        let rootDirectory = URL.cachesDirectory
-            .appendingPathComponent("\(bundleIdentifier)-cache")
-        let directory = rootDirectory.appendingPathComponent(name)
-
-        try FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
     }
 }

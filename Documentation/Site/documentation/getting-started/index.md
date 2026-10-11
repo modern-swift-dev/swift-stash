@@ -52,7 +52,7 @@ let currentProfile = await cache[.current]
 
 ## Persist entries to disk
 
-Create the named directory before persistence begins. `DiskStorageEngine` writes each entry below the app cache directory and does not create the named subdirectory for you.
+`DiskStorageEngine` writes each entry to a named directory below the app cache directory and creates that directory when it is initialized.
 
 Swift
 

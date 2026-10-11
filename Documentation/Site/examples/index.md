@@ -23,7 +23,7 @@ MemoryCacheExample
 
 ## Disk cache with JSON
 
-Make the named directory first. The JSON serializer stores a `Codable` profile, and the cache reads the profile through its string ID.
+The JSON serializer stores a `Codable` profile, and the cache reads the profile through its string ID.
 
 DiskCacheExample
 

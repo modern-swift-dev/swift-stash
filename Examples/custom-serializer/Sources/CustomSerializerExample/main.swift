@@ -24,7 +24,6 @@ private struct TemperatureSerializer: DiskStorageSerializer {
 @main private enum CustomSerializerExample {
     static func main() async throws {
         let directoryName = "temperature-example"
-        try createCacheDirectory(named: directoryName)
 
         let storage = DiskStorageEngine(
             directory: directoryName,
@@ -37,17 +36,5 @@ private struct TemperatureSerializer: DiskStorageSerializer {
         if let temperature = await cache["office"] {
             print("Office: \(temperature.celsius) °C")
         }
-    }
-
-    private static func createCacheDirectory(named name: String) throws {
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app-cache"
-        let rootDirectory = URL.cachesDirectory
-            .appendingPathComponent("\(bundleIdentifier)-cache")
-        let directory = rootDirectory.appendingPathComponent(name)
-
-        try FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
     }
 }
