@@ -78,6 +78,64 @@ struct DiskStorageEngineTests {
         engine.clear()
     }
 
+    /// Stores `Data` values unchanged.
+    private struct DataSerializer: DiskStorageSerializer {
+        func serialize(_ value: Data) throws -> Data {
+            value
+        }
+
+        func deserialize(_ data: Data) throws -> Data? {
+            data
+        }
+    }
+
+    private func entryFile(in name: String) throws -> Data {
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        #expect(files.count == 1)
+        return try Data(contentsOf: try #require(files.first))
+    }
+
+    @Test func entryFilesStoreValuesUnencoded() throws {
+        let name = directories.make("TestCompactFormat")
+        let engine = DiskStorageEngine(directory: name, serializer: DataSerializer())
+        let value = Data((0 ..< 30000).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+
+        #expect(engine.persist(CacheEntry(key: "key", value: value)))
+
+        let file = try entryFile(in: name)
+        #expect(file.starts(with: Data("SSE2".utf8)))
+        #expect(file.suffix(value.count) == value)
+        #expect(file.count < value.count + 512)
+        #expect(engine.load().first?.value == value)
+    }
+
+    @Test func legacyJSONEntriesAreRewrittenInTheCurrentFormat() throws {
+        let name = directories.make("TestLegacyFormatMigration")
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+        let engine = createEngineWithDirectory(name)
+        try writeLegacyEntry(key: "key", value: "value", creation: 1000, lastAccess: 1001, directory: directory, fileName: "key".cacheEntryFileName)
+
+        let entry = try #require(engine.load().first)
+
+        #expect(entry.value == "value")
+        #expect(entry.creation == Date(timeIntervalSince1970: 1000))
+        #expect(try entryFile(in: name).starts(with: Data("SSE2".utf8)))
+        #expect(createEngineWithDirectory(name).load().first?.value == "value")
+    }
+
+    @Test func truncatedEntryFilesAreRemoved() throws {
+        let name = directories.make("TestTruncatedEntry")
+        let engine = createEngineWithDirectory(name)
+        #expect(engine.persist(CacheEntry(key: "key", value: "value")))
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+        let url = directory.appendingPathComponent("key".cacheEntryFileName)
+        try Data(try Data(contentsOf: url).prefix(10)).write(to: url)
+
+        #expect(createEngineWithDirectory(name).load().isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
     @Test func deleteRemovesEntry() {
         let dirName = directories.make("TestDelete")
         let engine = createEngineWithDirectory(dirName)

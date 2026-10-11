@@ -91,7 +91,7 @@ let cache = Cache(storageEngine: storage)
 
 The engine creates the named subdirectory when it is initialized. Disk writes report failure by returning `false` from the storage engine; cache mutation APIs do not throw when persistence fails.
 
-Disk timestamps preserve fractional seconds. Existing ISO-8601 entries remain readable, but older SwiftStash releases cannot read the new numeric timestamp format.
+Each entry file holds a small metadata header followed by the serialized value as is. Files written by earlier releases remain readable and are rewritten in the current format when loaded, but earlier releases can't read the current format.
 
 You can support another persistence mechanism by conforming a type to `StorageEngine`, or support another disk representation by conforming to `DiskStorageSerializer`.
 

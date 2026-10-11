@@ -12,10 +12,14 @@ import Foundation
 
 private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 
+/// The bytes that start every entry file in the current format.
+private let entryFileSignature = Data("SSE2".utf8)
+
 /// A file-system-backed implementation of ``StorageEngine``.
 ///
 /// The engine serializes each entry with `Serializer` and writes it as a separate
-/// file in a named directory below the app cache directory. The engine creates the
+/// file in a named directory below the app cache directory. Each file holds a small
+/// metadata header followed by the serialized value, unencoded. The engine creates the
 /// named directory when it is initialized. Apps store entries under their bundle
 /// identifier; processes without one, such as command-line tools, use their process name.
 ///
@@ -100,7 +104,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         encoder.dataEncodingStrategy = .base64
         encoder.dateEncodingStrategy = .secondsSince1970
         encoder.keyEncodingStrategy = .useDefaultKeys
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.sortedKeys]
         encoder.nonConformingFloatEncodingStrategy = .throw
 
         decoder = JSONDecoder()
@@ -125,7 +129,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// Files that cannot be read, decoded, or deserialized are removed on a best-effort
     /// basis. If the directory cannot be enumerated, this method returns an empty array.
     /// Equivalent keys are merged by newest creation date, then last-access date.
-    /// Legacy filenames are migrated when writing succeeds; failed migrations retain their source files.
+    /// Legacy filenames and files in the JSON format of earlier releases are migrated when
+    /// writing succeeds; failed migrations retain their source files.
     ///
     /// - Returns: Entries successfully read and deserialized from files with the
     ///   `cache_entry` extension. Their order is unspecified.
@@ -139,17 +144,17 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         )) ?? []
         for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where fileURL.pathExtension == "cache_entry" {
             do {
-                let data = try Data(contentsOf: fileURL)
-                let entry = try decoder.decode(DiskEntry.self, from: data)
-                if let key = KeyType(stringValue: entry.key),
-                   let value = try serializer.deserialize(entry.value) {
+                let file = try decodeFile(Data(contentsOf: fileURL))
+                if let key = KeyType(stringValue: file.header.key),
+                   let value = try serializer.deserialize(file.value) {
                     let cacheEntry = CacheEntry<KeyType, StoredType>(
                         key: key,
                         value: value,
-                        creation: entry.creation,
-                        lastAccess: entry.lastAccess,
-                        accessCount: entry.accessCount ?? 0,
-                        expiration: entry.expiration
+                        creation: file.header.creation,
+                        lastAccess: file.header.lastAccess,
+                        accessCount: file.header.accessCount,
+                        expiration: file.header.expiration,
+                        cost: file.header.cost
                     )
                     entryFiles[key, default: []].insert(fileURL)
                     if let previous = entries[key],
@@ -157,7 +162,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                        (previous.entry.creation == cacheEntry.creation && previous.entry.lastAccess >= cacheEntry.lastAccess) {
                         continue
                     }
-                    entries[key] = LoadedEntry(entry: cacheEntry, diskEntry: entry)
+                    entries[key] = LoadedEntry(entry: cacheEntry, file: file)
                 } else {
                     try? FileManager.default.removeItem(at: fileURL)
                 }
@@ -168,11 +173,11 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         }
         for (key, loaded) in entries {
             let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
-            guard entryFiles[key] != Set([url]) else {
+            guard entryFiles[key] != Set([url]) || loaded.file.isLegacyFormat else {
                 continue
             }
             do {
-                let data = try encoder.encode(loaded.diskEntry)
+                let data = try encodeFile(header: loaded.file.header, value: loaded.file.value)
                 try data.write(to: url, options: writingOptions)
                 removeLegacyFiles(for: key, keeping: url)
             } catch {
@@ -200,7 +205,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
     /// Serializes and writes an entry to the storage directory.
     ///
-    /// The entry's key, creation date, last-access date, access count, expiration date, and serialized value are written.
+    /// The entry's key, creation date, last-access date, access count, expiration date, cost, and serialized value are written.
     /// Writes use the configured options; the default is atomic replacement.
     ///
     /// - Parameter entry: The entry to serialize and persist.
@@ -212,16 +217,15 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         do {
             let stringKey = entry.key.stringValue
             let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
-            let data = try serializer.serialize(entry.value)
-            let diskEntry = DiskEntry(
+            let header = EntryHeader(
                 key: stringKey,
                 creation: entry.creation,
                 lastAccess: entry.lastAccess,
                 accessCount: entry.accessCount,
                 expiration: entry.expiration,
-                value: data
+                cost: entry.cost
             )
-            let diskData = try encoder.encode(diskEntry)
+            let diskData = try encodeFile(header: header, value: serializer.serialize(entry.value))
             try diskData.write(to: url, options: writingOptions)
             removeLegacyFiles(for: entry.key, keeping: url)
             return true
@@ -261,30 +265,79 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         entryFiles[key] = remaining
     }
 
-    private struct LoadedEntry {
-        let entry: CacheEntry<KeyType, StoredType>
-        let diskEntry: DiskEntry
+    /// Encodes an entry file: the signature, the header length as a big-endian `UInt32`,
+    /// the JSON header, then the serialized value.
+    private func encodeFile(header: EntryHeader, value: Data) throws -> Data {
+        let headerData = try encoder.encode(header)
+        var data = entryFileSignature
+        withUnsafeBytes(of: UInt32(headerData.count).bigEndian) { data.append(contentsOf: $0) }
+        data.append(headerData)
+        data.append(value)
+        return data
     }
 
-    /// Private Entry Struct that is used for storing the cache entry along with it's metadata
-    private struct DiskEntry: Codable {
+    /// Decodes an entry file in the current format or the JSON format of earlier releases.
+    private func decodeFile(_ data: Data) throws -> EntryFile {
+        guard data.starts(with: entryFileSignature) else {
+            let legacy = try decoder.decode(LegacyEntry.self, from: data)
+            let header = EntryHeader(
+                key: legacy.key,
+                creation: legacy.creation,
+                lastAccess: legacy.lastAccess,
+                accessCount: legacy.accessCount ?? 0,
+                expiration: legacy.expiration,
+                cost: 0
+            )
+            return EntryFile(header: header, value: legacy.value, isLegacyFormat: true)
+        }
+        let lengthStart = data.startIndex + entryFileSignature.count
+        let headerStart = lengthStart + MemoryLayout<UInt32>.size
+        guard data.endIndex >= headerStart else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let headerLength = data[lengthStart ..< headerStart].reduce(0) { $0 << 8 | Int($1) }
+        let headerEnd = headerStart + headerLength
+        guard data.endIndex >= headerEnd else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let header = try decoder.decode(EntryHeader.self, from: data[headerStart ..< headerEnd])
+        return EntryFile(header: header, value: Data(data[headerEnd...]), isLegacyFormat: false)
+    }
 
-        /// The Key
+    private struct LoadedEntry {
+        let entry: CacheEntry<KeyType, StoredType>
+        let file: EntryFile
+    }
+
+    /// The decoded contents of an entry file
+    private struct EntryFile {
+        let header: EntryHeader
+        let value: Data
+        let isLegacyFormat: Bool
+    }
+
+    /// The metadata stored at the start of an entry file
+    private struct EntryHeader: Codable {
         var key: String
-
-        /// The Creation Date
         var creation: Date
+        var lastAccess: Date
+        var accessCount: Int64
+        var expiration: Date?
+        var cost: Int
+    }
 
-        /// The Last accesss of the entry
+    /// An entry file in the JSON format of earlier releases, with a base64-encoded value
+    private struct LegacyEntry: Decodable {
+        var key: String
+        var creation: Date
         var lastAccess: Date
 
-        /// The number of recorded accesses, absent from entries written by older releases
+        /// Absent from entries written before access counts were stored
         var accessCount: Int64?
 
-        /// The date when the entry expires regardless of the eviction policy, if any
+        /// Absent from entries written before per-entry lifetimes
         var expiration: Date?
 
-        /// The Data
         var value: Data
     }
 
