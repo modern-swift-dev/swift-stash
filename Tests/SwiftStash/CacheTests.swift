@@ -2,13 +2,6 @@ import Foundation
 @testable import SwiftStash
 import Testing
 
-/// Helper extension for testing subscript setter
-extension Cache {
-    func setSubscript(key: KeyType, value: CacheType?) {
-        self[key] = value
-    }
-}
-
 struct CacheTests {
 
     // MARK: - Test Data Structures
@@ -511,29 +504,6 @@ struct CacheTests {
         #expect(itemC?.value == "third")
     }
 
-    @Test func subscriptSetterAddsValue() async {
-        let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
-
-        await cache.setSubscript(key: "myKey", value: TestItem(id: "myKey", value: "myValue"))
-
-        let item = await cache["myKey"]
-        #expect(item?.value == "myValue")
-    }
-
-    @Test func subscriptSetterWithNilRemovesValue() async {
-        let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
-
-        await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
-        await cache.setSubscript(key: "key1", value: nil)
-
-        let item = await cache["key1"]
-        let count = await cache.count
-        #expect(item == nil)
-        #expect(count == 0)
-    }
-
     // MARK: - EvictUntil Edge Cases
 
     @Test func evictUntilZeroClearsCache() async {
@@ -586,7 +556,7 @@ struct CacheTests {
             (.first, TestItem(id: "1", value: "first")),
             (.second, TestItem(id: "2", value: "second"))
         ])
-        await cache.setSubscript(key: .third, value: TestItem(id: "3", value: "third"))
+        await cache.add(TestItem(id: "3", value: "third"), for: .third)
 
         let keys = await cache.keys()
         let entry = await cache.entry(for: .first)
@@ -598,7 +568,7 @@ struct CacheTests {
         #expect(third?.value == "third")
 
         await cache.remove(.second)
-        await cache.setSubscript(key: .third, value: nil)
+        await cache.remove(.third)
 
         #expect(await cache[.second] == nil)
         #expect(await cache[.third] == nil)

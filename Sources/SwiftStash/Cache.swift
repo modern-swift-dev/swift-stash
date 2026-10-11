@@ -208,7 +208,9 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Reading an existing value updates its last-access date. With the LRU policy, the updated
     /// entry is also persisted, so the access survives a reload.
     /// Reading an expired value removes its entry and returns `nil`.
-    /// Assigning `nil` removes the entry; assigning a non-`nil` value creates or replaces it.
+    ///
+    /// The setter is deprecated because code outside the cache's actor can't assign through it.
+    /// Use ``add(_:for:)`` and ``remove(_:)`` instead.
     ///
     /// - Parameter key: The key of the entry to access.
     /// - Returns: The cached value, or `nil` if the key is not present.
@@ -216,6 +218,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         get {
             access(key, at: clock.now)?.value
         }
+        @available(*, deprecated, message: "Use add(_:for:) or remove(_:).")
         set {
             guard let value = newValue else {
                 remove(key)
