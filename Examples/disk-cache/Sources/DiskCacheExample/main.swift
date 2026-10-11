@@ -14,7 +14,7 @@ private struct Profile: Codable, Identifiable, Sendable {
             directory: directoryName,
             serializer: JsonDiskStorageSerializer<Profile>()
         )
-        let cache = await Cache(
+        let cache = Cache(
             policy: .lru(threshold: 24 * 60 * 60),
             storagePolicy: storage
         )

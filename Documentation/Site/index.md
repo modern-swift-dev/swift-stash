@@ -52,7 +52,7 @@ Swift
 import SwiftStash
 
 let storage = MemoryStorageEngine<String, String>()
-let cache = await Cache(
+let cache = Cache(
     policy: .lru(threshold: 5 * 60),
     storagePolicy: storage
 )

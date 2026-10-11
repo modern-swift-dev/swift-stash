@@ -37,7 +37,7 @@ struct CacheClockTests {
 
     @Test func cacheTimestampsEntriesWithItsClock() async {
         let clock = ManualClock(now: Date(timeIntervalSince1970: 1000))
-        let cache = await Cache(storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
 
         let added = await cache.add("value", for: "key")
         #expect(added.creation == Date(timeIntervalSince1970: 1000))
@@ -51,8 +51,8 @@ struct CacheClockTests {
     @Test func cachesWithSeparateClocksExpireIndependently() async {
         let fastClock = ManualClock()
         let slowClock = ManualClock()
-        let fast = await Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine<String, String>(), clock: fastClock)
-        let slow = await Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine<String, String>(), clock: slowClock)
+        let fast = Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine<String, String>(), clock: fastClock)
+        let slow = Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine<String, String>(), clock: slowClock)
         await fast.add("value", for: "key")
         await slow.add("value", for: "key")
 

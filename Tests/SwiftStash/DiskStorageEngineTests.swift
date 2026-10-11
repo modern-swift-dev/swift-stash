@@ -389,7 +389,7 @@ struct DiskStorageEngineTests {
         #expect(loaded.lastAccess == access)
 
         let clock = ManualClock(now: Date(timeIntervalSince1970: 1000.9375))
-        let cache = await Cache(policy: .lru(threshold: 0.5), storagePolicy: engine, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 0.5), storagePolicy: engine, clock: clock)
         await cache.evictExpired()
         #expect(await cache.count == 1)
     }

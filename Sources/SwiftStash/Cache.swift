@@ -11,7 +11,7 @@ public typealias CacheableDataType = Sendable
 ///
 /// Example usage:
 /// ```swift
-/// let cache = await Cache(
+/// let cache = Cache(
 ///     policy: .lru(threshold: 300),
 ///     storagePolicy: MemoryStorageEngine<String, String>()
 /// )
@@ -77,18 +77,15 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         policy: EvictionPolicy = .lru(threshold: 300),
         storagePolicy: StorageEngineType,
         clock: any CacheClock = NetworkTimeClock.shared
-    ) async {
+    ) {
         self.policy = policy
         self.clock = clock
         storageEngine = storagePolicy
-        load()
-    }
-
-    /// Load entries from storage
-    private func load() {
-        for entry in storageEngine.load() {
-            entries[entry.key] = entry
+        var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
+        for entry in storagePolicy.load() {
+            loaded[entry.key] = entry
         }
+        entries = loaded
     }
 
     /// Returns all keys currently held by the cache.

@@ -41,7 +41,7 @@ Then add `SwiftStash` to the dependencies of your target:
 import SwiftStash
 
 let storage = MemoryStorageEngine<String, String>()
-let cache = await Cache(
+let cache = Cache(
     policy: .lru(threshold: 5 * 60),
     storagePolicy: storage
 )
@@ -66,7 +66,7 @@ enum ProfileKey: String, CacheKey {
 }
 
 let storage = MemoryStorageEngine<ProfileKey, Profile>()
-let cache = await Cache(storagePolicy: storage)
+let cache = Cache(storagePolicy: storage)
 
 await cache.add(profile, for: .current)
 let currentProfile = await cache[.current]
@@ -86,7 +86,7 @@ let storage = DiskStorageEngine(
     keyType: ProfileKey.self,
     serializer: JsonDiskStorageSerializer<Profile>()
 )
-let cache = await Cache(storagePolicy: storage)
+let cache = Cache(storagePolicy: storage)
 ```
 
 The engine creates the named subdirectory when it is initialized. Disk writes report failure by returning `false` from the storage engine; cache mutation APIs do not throw when persistence fails.
@@ -121,7 +121,7 @@ Pass a `ManualClock` to test expiration and eviction without waiting for real ti
 
 ```swift
 let clock = ManualClock()
-let cache = await Cache(
+let cache = Cache(
     policy: .fifo(threshold: 60),
     storagePolicy: MemoryStorageEngine<String, String>(),
     clock: clock

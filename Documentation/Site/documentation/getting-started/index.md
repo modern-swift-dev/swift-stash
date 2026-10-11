@@ -44,7 +44,7 @@ enum ProfileKey: String, CacheKey {
 }
 
 let storage = MemoryStorageEngine<ProfileKey, String>()
-let cache = await Cache(storagePolicy: storage)
+let cache = Cache(storagePolicy: storage)
 
 await cache.add("Ada", for: .current)
 let currentProfile = await cache[.current]
@@ -62,7 +62,7 @@ let storage = DiskStorageEngine(
     keyType: ProfileKey.self,
     serializer: JsonDiskStorageSerializer<Profile>()
 )
-let cache = await Cache(storagePolicy: storage)
+let cache = Cache(storagePolicy: storage)
 ```
 
 <a id="eviction"></a>

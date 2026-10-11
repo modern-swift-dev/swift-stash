@@ -13,7 +13,7 @@ private enum ArticleKey: String, CacheKey {
 @main private enum MemoryCacheExample {
     static func main() async {
         let storage = MemoryStorageEngine<ArticleKey, Article>()
-        let cache = await Cache(
+        let cache = Cache(
             policy: .lru(threshold: 10 * 60),
             storagePolicy: storage
         )
