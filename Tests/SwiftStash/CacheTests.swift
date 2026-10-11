@@ -140,10 +140,11 @@ struct CacheTests {
         await cache.add(TestItem(id: "2", value: "second"))
         clock.advance(by: 1)
         await cache.add(TestItem(id: "3", value: "third"))
-        clock.advance(by: 15)
+        clock.advance(by: 12)
 
-        // Access item "2" to make it most recently used
+        // Access item "2" before it expires to make it most recently used
         _ = await cache["2"]
+        clock.advance(by: 4)
 
         await cache.evictExpired()
 
@@ -164,7 +165,7 @@ struct CacheTests {
         await cache.add(TestItem(id: "2", value: "second"))
         clock.advance(by: 1)
         await cache.add(TestItem(id: "3", value: "third"))
-        clock.advance(by: 15)
+        clock.advance(by: 5)
 
         // Access items in specific order
         _ = await cache["1"]
@@ -287,6 +288,80 @@ struct CacheTests {
 
             #expect(await cache.keys() == ["retained"])
         }
+    }
+
+    /// The eviction policies, each with a 10-second threshold.
+    enum PolicyKind: CaseIterable {
+        case fifo
+        case lifo
+        case lru
+
+        var policy: Cache<MemoryStorageEngine<String, String>, String>.EvictionPolicy {
+            switch self {
+                case .fifo: .fifo(threshold: 10)
+                case .lifo: .lifo(threshold: 10)
+                case .lru: .lru(threshold: 10)
+            }
+        }
+    }
+
+    @Test(arguments: PolicyKind.allCases) func subscriptDoesNotReturnExpiredValues(
+        kind: PolicyKind
+    ) async {
+        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key")
+        clock.advance(by: 10)
+
+        #expect(await cache["key"] == nil)
+        #expect(await cache.isEmpty)
+    }
+
+    @Test(arguments: PolicyKind.allCases) func entryDoesNotReturnExpiredEntries(
+        kind: PolicyKind
+    ) async {
+        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key")
+        clock.advance(by: 10)
+
+        #expect(await cache.entry(for: "key") == nil)
+        #expect(await cache.isEmpty)
+    }
+
+    @Test(arguments: PolicyKind.allCases) func valuesSkipsExpiredValues(
+        kind: PolicyKind
+    ) async {
+        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("old", for: "expired")
+        clock.advance(by: 5)
+        await cache.add("new", for: "fresh")
+        clock.advance(by: 5)
+
+        #expect(await cache.values() == ["new"])
+        #expect(await cache.keys() == ["fresh"])
+    }
+
+    @Test(arguments: PolicyKind.allCases) func valuesReadJustBeforeExpiryAreReturned(
+        kind: PolicyKind
+    ) async {
+        let cache = await Cache(policy: kind.policy, storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key")
+        clock.advance(by: 9.999)
+
+        #expect(await cache["key"] == "value")
+    }
+
+    @Test func expiredReadRemovesTheEntryFromStorage() async {
+        let directory = "TestExpiredRead_\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
+        let storage = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
+        let cache = await Cache(policy: .fifo(threshold: 10), storagePolicy: storage, clock: clock)
+        await cache.add("value", for: "key")
+        clock.advance(by: 10)
+
+        #expect(await cache["key"] == nil)
+
+        let reloaded = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
+        #expect(reloaded.load().isEmpty)
     }
 
     @Test func entryReturnsNilForMissingKey() async {

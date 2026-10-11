@@ -69,7 +69,7 @@ let cache = await Cache(storagePolicy: storage)
 
 ## Compare cache state after eviction
 
-Choose `.fifo`, `.lifo`, or `.lru` when creating the cache. Call `evictExpired()` to remove old entries, or call `evictUntil(maxNbItems:)` to first remove expired entries and then enforce a maximum count.
+Choose `.fifo`, `.lifo`, or `.lru` when creating the cache. Reads never return an expired entry; reading one removes it. Call `evictExpired()` to remove all old entries, or call `evictUntil(maxNbItems:)` to first remove expired entries and then enforce a maximum count.
 
 SwiftStash does not run a background timer. Place the eviction call in the workflow that knows when reducing the cache makes sense.
 

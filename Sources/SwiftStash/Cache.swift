@@ -49,6 +49,8 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     }
 
     /// The number of entries currently held by the cache.
+    ///
+    /// The count includes expired entries that haven't been read or evicted yet.
     public var count: Int {
         entries.count
     }
@@ -91,40 +93,57 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
 
     /// Returns all keys currently held by the cache.
     ///
+    /// The keys include expired entries that haven't been read or evicted yet.
+    ///
     /// - Returns: An unordered array of cache keys.
     public func keys() -> [KeyType] {
         Array(entries.keys)
     }
 
-    /// Returns all values currently held by the cache and persists an access for each entry.
+    /// Returns all unexpired values held by the cache and persists an access for each entry.
+    ///
+    /// Expired entries are removed instead of returned.
     ///
     /// - Returns: An unordered array of cached values.
     public func values() -> [CacheType] {
-        var values = [CacheType]()
         let now = clock.now
-        for key in entries.keys {
-            if var entry = entries[key] {
-                entry.updateLastAccess(at: now)
-                entries[key] = entry
-                storageEngine.persist(entry)
-                values.append(entry.value)
-            }
-        }
-        return values
+        return entries.keys.compactMap { access($0, at: now)?.value }
     }
 
     /// Returns the entry for a key and persists an access when it exists.
     ///
+    /// An expired entry is removed instead of returned.
+    ///
     /// - Parameter key: The key identifying the entry.
-    /// - Returns: The matching cache entry, or `nil` when the key is not present.
+    /// - Returns: The matching cache entry, or `nil` when the key is not present or the entry has expired.
     public func entry(for key: KeyType) -> CacheEntry<KeyType, CacheType>? {
+        access(key, at: clock.now)
+    }
+
+    /// Records an access to an unexpired entry, or removes the entry if it has expired.
+    private func access(_ key: KeyType, at now: Date) -> CacheEntry<KeyType, CacheType>? {
         guard var entry = entries[key] else {
             return nil
         }
-        entry.updateLastAccess(at: clock.now)
+        guard !isExpired(entry, at: now) else {
+            remove(key)
+            return nil
+        }
+        entry.updateLastAccess(at: now)
         entries[key] = entry
         storageEngine.persist(entry)
         return entry
+    }
+
+    /// Whether an entry's age meets or exceeds the eviction policy's threshold.
+    private func isExpired(_ entry: CacheEntry<KeyType, CacheType>, at now: Date) -> Bool {
+        switch policy {
+            case let .fifo(threshold),
+                 let .lifo(threshold):
+                entry.creation <= Date(timeInterval: -threshold, since: now)
+            case let .lru(threshold):
+                entry.lastAccess <= Date(timeInterval: -threshold, since: now)
+        }
     }
 
     /// Adds multiple values to the cache using their corresponding keys.
@@ -169,20 +188,14 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Accesses the value associated with a key.
     ///
     /// Reading an existing value updates its last-access date and persists the updated entry.
+    /// Reading an expired value removes its entry and returns `nil`.
     /// Assigning `nil` removes the entry; assigning a non-`nil` value creates or replaces it.
     ///
     /// - Parameter key: The key of the entry to access.
     /// - Returns: The cached value, or `nil` if the key is not present.
     public subscript(key: KeyType) -> CacheType? {
         get {
-            guard var entry = entries[key] else {
-                return nil
-            }
-
-            entry.updateLastAccess(at: clock.now)
-            entries[key] = entry
-            storageEngine.persist(entry)
-            return entry.value
+            access(key, at: clock.now)?.value
         }
         set {
             guard let value = newValue else {
@@ -203,16 +216,8 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///
     /// FIFO and LIFO policies compare the creation date; LRU compares the last-access date.
     public func evictExpired() {
-        let expiredKeys: [KeyType]
-        switch policy {
-            case let .fifo(threshold),
-                 let .lifo(threshold):
-                let deletionDate = Date(timeInterval: -threshold, since: clock.now)
-                expiredKeys = entries.values.compactMap { $0.creation <= deletionDate ? $0.key : nil }
-            case let .lru(threshold):
-                let deletionDate = Date(timeInterval: -threshold, since: clock.now)
-                expiredKeys = entries.values.compactMap { $0.lastAccess <= deletionDate ? $0.key : nil }
-        }
+        let now = clock.now
+        let expiredKeys = entries.values.compactMap { isExpired($0, at: now) ? $0.key : nil }
         for key in expiredKeys {
             remove(key)
         }
