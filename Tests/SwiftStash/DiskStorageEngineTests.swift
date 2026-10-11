@@ -8,6 +8,8 @@ import Testing
 
 struct DiskStorageEngineTests {
 
+    private let directories = TestDirectories()
+
     private enum TestKey: String, CacheKey {
         case known
     }
@@ -22,7 +24,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func persistAndLoadEntry() {
-        let dirName = "TestPersistLoad_\(UUID().uuidString)"
+        let dirName = directories.make("TestPersistLoad")
         let engine = createEngineWithDirectory(dirName)
 
         let entry = CacheEntry(key: "testKey", value: "testValue")
@@ -38,9 +40,8 @@ struct DiskStorageEngineTests {
     }
 
     @Test func initCreatesMissingDirectory() {
-        let dirName = "TestCreatesDirectory_\(UUID().uuidString)"
+        let dirName = directories.make("TestCreatesDirectory")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
-        defer { try? FileManager.default.removeItem(at: directory) }
         #expect(!FileManager.default.fileExists(atPath: directory.path))
 
         let engine = DiskStorageEngine(directory: dirName, serializer: TextDiskStorageSerializer())
@@ -53,7 +54,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func longKeysPersistAndLoad() {
-        let dirName = "TestLongKeys_\(UUID().uuidString)"
+        let dirName = directories.make("TestLongKeys")
         let engine = createEngineWithDirectory(dirName)
         let key = String(repeating: "k", count: 1000)
 
@@ -67,7 +68,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func persistAndLoadPreserveAccessCount() {
-        let dirName = "TestAccessCount_\(UUID().uuidString)"
+        let dirName = directories.make("TestAccessCount")
         let engine = createEngineWithDirectory(dirName)
         let date = Date(timeIntervalSince1970: 1000)
 
@@ -78,7 +79,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func deleteRemovesEntry() {
-        let dirName = "TestDelete_\(UUID().uuidString)"
+        let dirName = directories.make("TestDelete")
         let engine = createEngineWithDirectory(dirName)
 
         let entry = CacheEntry(key: "testKey", value: "testValue")
@@ -93,7 +94,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func clearRemovesAllEntries() {
-        let dirName = "TestClear_\(UUID().uuidString)"
+        let dirName = directories.make("TestClear")
         let engine = createEngineWithDirectory(dirName)
 
         let entry1 = CacheEntry(key: "key1", value: "value1")
@@ -109,10 +110,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func clearKeepsFilesItDoesNotOwn() throws {
-        let dirName = "TestClearKeepsOtherFiles_\(UUID().uuidString)"
+        let dirName = directories.make("TestClearKeepsOtherFiles")
         let engine = createEngineWithDirectory(dirName)
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let otherFile = directory.appendingPathComponent("notes.txt")
         try Data("keep me".utf8).write(to: otherFile)
         _ = engine.persist(CacheEntry(key: "key1", value: "value1"))
@@ -132,11 +132,10 @@ struct DiskStorageEngineTests {
     }
 
     @Test func loadHandlesCorruptedFiles() throws {
-        let dirName = "TestLoadCorrupted_\(UUID().uuidString)"
+        let dirName = directories.make("TestLoadCorrupted")
         let engine = createEngineWithDirectory(dirName)
 
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let corrupted = directory.appendingPathComponent("corrupted.cache_entry")
         try Data("not JSON".utf8).write(to: corrupted)
 
@@ -155,7 +154,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func loadEmptyDirectory() {
-        let dirName = "TestLoadEmpty_\(UUID().uuidString)"
+        let dirName = directories.make("TestLoadEmpty")
         let engine = createEngineWithDirectory(dirName)
 
         // Fresh directory should have no entries
@@ -164,7 +163,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func persistMultipleEntriesAndLoad() {
-        let dirName = "TestPersistMultiple_\(UUID().uuidString)"
+        let dirName = directories.make("TestPersistMultiple")
         let engine = createEngineWithDirectory(dirName)
 
         let entry1 = CacheEntry(key: "key1", value: "value1")
@@ -185,7 +184,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func persistAndLoadEnumKey() {
-        let dirName = "TestEnumKey_\(UUID().uuidString)"
+        let dirName = directories.make("TestEnumKey")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let engine = DiskStorageEngine(
@@ -205,7 +204,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func stringAndEnumKeysUseTheSameDiskRepresentation() {
-        let dirName = "TestCompatibleKey_\(UUID().uuidString)"
+        let dirName = directories.make("TestCompatibleKey")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let stringEngine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
@@ -229,7 +228,7 @@ struct DiskStorageEngineTests {
     }
 
     @Test func loadRemovesEntryWithUnknownEnumKey() {
-        let dirName = "TestUnknownEnumKey_\(UUID().uuidString)"
+        let dirName = directories.make("TestUnknownEnumKey")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let stringEngine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
@@ -287,10 +286,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func equivalentUnicodeKeysShareOneFileAndStayDeleted() throws {
-        let name = "TestUnicode_\(UUID().uuidString)"
+        let name = directories.make("TestUnicode")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         let engine = createEngineWithDirectory(name)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let composed = "\u{E9}"
         let decomposed = "e\u{301}"
 
@@ -304,10 +302,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test(arguments: [false, true]) func legacyDuplicatesMigrateTheNewestEntry(useLastAccess: Bool) throws {
-        let name = "TestLegacyUnicode_\(UUID().uuidString)"
+        let name = directories.make("TestLegacyUnicode")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         let engine = createEngineWithDirectory(name)
-        defer { try? FileManager.default.removeItem(at: directory) }
         try writeLegacyEntry(key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1002, directory: directory)
         try writeLegacyEntry(key: "e\u{301}", value: "new", creation: useLastAccess ? 1000 : 1001, lastAccess: 1003, directory: directory)
 
@@ -324,10 +321,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test(arguments: [false, true]) func legacyEntriesSupportMutationBeforeLoading(overwrite: Bool) throws {
-        let name = "TestLegacyMutation_\(UUID().uuidString)"
+        let name = directories.make("TestLegacyMutation")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
         try writeLegacyEntry(key: "e\u{301}", value: "old", creation: 1000, lastAccess: 1000, directory: directory)
         let engine = createEngineWithDirectory(name)
         let entry = CacheEntry(key: "\u{E9}", value: "new")
@@ -340,10 +336,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func failedMigrationRetainsSourcesAndDeleteRemovesAllAliases() throws {
-        let name = "TestFailedMigration_\(UUID().uuidString)"
+        let name = directories.make("TestFailedMigration")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
         // Occupy the canonical filename so the migration write fails.
         try writeLegacyEntry(
             key: "\u{E9}", value: "old", creation: 1000, lastAccess: 1000, directory: directory,
@@ -362,10 +357,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func legacyISO8601TimestampsRemainReadable() throws {
-        let name = "TestLegacyTimestamp_\(UUID().uuidString)"
+        let name = directories.make("TestLegacyTimestamp")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         let engine = createEngineWithDirectory(name)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let json = #"{"key":"key","creation":"1970-01-01T00:16:40Z","lastAccess":"1970-01-01T00:16:41Z","value":"dmFsdWU="}"#
         try Data(json.utf8).write(to: directory.appendingPathComponent("legacy.cache_entry"))
 
@@ -377,10 +371,8 @@ struct DiskStorageEngineTests {
     }
 
     @Test func fractionalTimestampsSurviveReload() async throws {
-        let name = "TestFractionalTimestamp_\(UUID().uuidString)"
-        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+        let name = directories.make("TestFractionalTimestamp")
         let engine = createEngineWithDirectory(name)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let creation = Date(timeIntervalSince1970: 1000.875)
         let access = Date(timeIntervalSince1970: 1000.9375)
         #expect(engine.persist(CacheEntry(key: "key", value: "value", creation: creation, lastAccess: access)))
@@ -395,10 +387,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func withoutOverwritingPreservesExistingValue() throws {
-        let name = "TestWritingOptions_\(UUID().uuidString)"
+        let name = directories.make("TestWritingOptions")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let engine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
             directory: name, serializer: TextDiskStorageSerializer(), options: [.withoutOverwriting]
         )
@@ -408,10 +399,9 @@ struct DiskStorageEngineTests {
     }
 
     @Test func unsupportedStringEncodingReportsPersistenceFailure() throws {
-        let name = "TestEncodingFailure_\(UUID().uuidString)"
+        let name = directories.make("TestEncodingFailure")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
         let engine = DiskStorageEngine(directory: name, serializer: TextDiskStorageSerializer(encoding: .ascii))
         #expect(!engine.persist(CacheEntry(key: "key", value: "🌍")))
         #expect(engine.load().isEmpty)

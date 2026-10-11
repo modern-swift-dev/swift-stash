@@ -223,9 +223,8 @@ struct CacheTests {
 
     @Test func readsPersistAccessAcrossReload() async throws {
         for method in ReadMethod.allCases {
-            let directory = "TestReadPersistence_\(UUID().uuidString)"
+            let directory = directories.make("TestReadPersistence")
             let directoryURL = URL.swiftStashCacheDirectory.appendingPathComponent(directory)
-            defer { try? FileManager.default.removeItem(at: directoryURL) }
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
             let storage = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
                 directory: directory,
@@ -283,6 +282,8 @@ struct CacheTests {
         }
     }
 
+    private let directories = TestDirectories()
+
     /// The eviction policies, each with a 10-second threshold.
     static let policies: [EvictionPolicy] = [.fifo(threshold: 10), .lifo(threshold: 10), .lru(threshold: 10)]
 
@@ -339,8 +340,7 @@ struct CacheTests {
     }
 
     @Test func expiredReadRemovesTheEntryFromStorage() async {
-        let directory = "TestExpiredRead_\(UUID().uuidString)"
-        defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
+        let directory = directories.make("TestExpiredRead")
         let storage = DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer())
         let cache = Cache(policy: .fifo(threshold: 10), storageEngine: storage, clock: clock)
         await cache.add("value", for: "key")
@@ -424,8 +424,7 @@ struct CacheTests {
     }
 
     @Test func lruAccessCountSurvivesReload() async {
-        let directory = "TestAccessCountReload_\(UUID().uuidString)"
-        defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
+        let directory = directories.make("TestAccessCountReload")
         let cache = Cache(
             policy: .lru(threshold: 300),
             storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
@@ -444,8 +443,7 @@ struct CacheTests {
     }
 
     @Test func initIsSynchronousAndLoadsStoredEntries() async {
-        let directory = "TestSynchronousInit_\(UUID().uuidString)"
-        defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
+        let directory = directories.make("TestSynchronousInit")
         let storage = DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer())
         storage.persist(CacheEntry(key: "key", value: "value", creation: clock.now, lastAccess: clock.now))
 
