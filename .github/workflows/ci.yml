@@ -45,6 +45,46 @@ jobs:
         run: swift build -c release 2>&1 | mint run --no-install cpisciotta/xcbeautify -q
       - name: Release tests
         run: swift test -c release 2>&1 | mint run --no-install cpisciotta/xcbeautify -q
+      - name: Build examples
+        run: |
+          for example in Examples/*/; do
+            swift build --package-path "$example" 2>&1 | mint run --no-install cpisciotta/xcbeautify -q
+          done
+
+  # The oldest supported Swift version. Current xcbeautify releases don't build
+  # with Swift 6.0, so this job uses plain output.
+  linux-minimum-swift:
+    runs-on: ubuntu-24.04
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify Swift 6.0
+        run: swift --version | grep -F 'Swift version 6.0'
+      - name: Release build
+        run: swift build -c release
+      - name: Release tests
+        run: swift test -c release
+
+  apple-build:
+    name: build (${{ matrix.platform }})
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [tvOS, watchOS, visionOS]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install xcbeautify
+        run: |
+          brew install mint
+          mint install cpisciotta/xcbeautify
+      - name: Build for ${{ matrix.platform }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          xcodebuild build -scheme SwiftStash -destination "generic/platform=$PLATFORM" 2>&1 | mint run --no-install cpisciotta/xcbeautify -q
 
   apple:
     runs-on: macos-26
