@@ -105,6 +105,25 @@ Choose a policy when creating a cache:
 
 The threshold is measured in seconds. Call `evictExpired()` to remove expired entries, or `evictUntil(maxNbItems:)` to remove expired entries and enforce a maximum count. Eviction is explicit; SwiftStash does not start a background timer.
 
+## Testing
+
+A cache reads the time from its clock, which defaults to `NetworkTimeClock.shared`. Pass a `ManualClock` to test expiration and eviction without waiting for real time to pass:
+
+```swift
+let clock = ManualClock()
+let cache = await Cache(
+    policy: .fifo(threshold: 60),
+    storagePolicy: MemoryStorageEngine<String, String>(),
+    clock: clock
+)
+
+await cache.add("Ada", for: "current-user")
+clock.advance(by: 60)
+await cache.evictExpired()
+```
+
+Each `ManualClock` is independent, so tests that use separate clocks can run in parallel.
+
 ## Examples
 
 The examples are independent, executable Swift packages:

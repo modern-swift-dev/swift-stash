@@ -11,7 +11,7 @@ public typealias CacheableDataType = Sendable
 ///
 /// Example usage:
 /// ```swift
-/// let cache = Cache(
+/// let cache = await Cache(
 ///     policy: .lru(threshold: 300),
 ///     storagePolicy: MemoryStorageEngine<String, String>()
 /// )
@@ -59,6 +59,9 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// The Eviction Policy
     private let policy: EvictionPolicy
 
+    /// The clock used to timestamp entries and find expired ones
+    private let clock: any CacheClock
+
     /// The Entries
     private var entries: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
 
@@ -67,8 +70,14 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// - Parameters:
     ///   - policy: The policy used by ``evictExpired()`` and ``evictUntil(maxNbItems:)``. Defaults to LRU with a 300-second threshold.
     ///   - storagePolicy: The storage engine that loads and persists cache entries.
-    public init(policy: EvictionPolicy = .lru(threshold: 300), storagePolicy: StorageEngineType) async {
+    ///   - clock: The clock used to timestamp entries and find expired ones. Defaults to ``NetworkTimeClock/shared``.
+    public init(
+        policy: EvictionPolicy = .lru(threshold: 300),
+        storagePolicy: StorageEngineType,
+        clock: any CacheClock = NetworkTimeClock.shared
+    ) async {
         self.policy = policy
+        self.clock = clock
         storageEngine = storagePolicy
         load()
     }
@@ -92,9 +101,10 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// - Returns: An unordered array of cached values.
     public func values() -> [CacheType] {
         var values = [CacheType]()
+        let now = clock.now
         for key in entries.keys {
             if var entry = entries[key] {
-                entry.updateLastAccess()
+                entry.updateLastAccess(at: now)
                 entries[key] = entry
                 storageEngine.persist(entry)
                 values.append(entry.value)
@@ -111,7 +121,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         guard var entry = entries[key] else {
             return nil
         }
-        entry.updateLastAccess()
+        entry.updateLastAccess(at: clock.now)
         entries[key] = entry
         storageEngine.persist(entry)
         return entry
@@ -123,7 +133,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///
     /// - Parameter values: Key-value pairs to add. An existing entry with the same key is replaced.
     public func add(_ values: [(KeyType, CacheType)]) {
-        let creation = Date.monotonic
+        let creation = clock.now
         for value in values {
             let entry = CacheEntry(key: value.0, value: value.1, creation: creation, lastAccess: creation)
             entries[entry.key] = entry
@@ -140,7 +150,8 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     ///   - key: The key used to retrieve the value.
     /// - Returns: The cache entry created for the value.
     @discardableResult public func add(_ value: CacheType, for key: KeyType) -> CacheEntry<KeyType, CacheType> {
-        let entry = CacheEntry(key: key, value: value)
+        let now = clock.now
+        let entry = CacheEntry(key: key, value: value, creation: now, lastAccess: now)
         entries[key] = entry
         storageEngine.persist(entry)
         return entry
@@ -168,7 +179,7 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
                 return nil
             }
 
-            entry.updateLastAccess()
+            entry.updateLastAccess(at: clock.now)
             entries[key] = entry
             storageEngine.persist(entry)
             return entry.value
@@ -196,10 +207,10 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         switch policy {
             case let .fifo(threshold),
                  let .lifo(threshold):
-                let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
+                let deletionDate = Date(timeInterval: -threshold, since: clock.now)
                 expiredKeys = entries.values.compactMap { $0.creation <= deletionDate ? $0.key : nil }
             case let .lru(threshold):
-                let deletionDate = Date(timeInterval: -threshold, since: .monotonic)
+                let deletionDate = Date(timeInterval: -threshold, since: clock.now)
                 expiredKeys = entries.values.compactMap { $0.lastAccess <= deletionDate ? $0.key : nil }
         }
         for key in expiredKeys {

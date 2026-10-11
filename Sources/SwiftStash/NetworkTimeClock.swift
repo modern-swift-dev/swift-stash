@@ -4,27 +4,28 @@ import Foundation
     private import Kronos
 #endif
 
-/// A shared wall clock that uses NTP time when available and supports a fixed,
-/// manually advanced date for deterministic tests.
+/// A shared wall clock that uses NTP time when available.
 ///
-/// On platforms where Kronos is available, the clock returns its synchronized
-/// time after synchronization succeeds and otherwise falls back to the system
-/// date. Calling ``reset(year:month:day:hour:minute:second:)`` or
-/// ``set(unixTimestamp:)`` switches the clock to a controlled date.
-public final class MonotonicClock: @unchecked Sendable {
-    private static let productionInstance = MonotonicClock()
+/// This is the default clock of a ``Cache``. On platforms where Kronos is available,
+/// the clock returns its synchronized time after synchronization succeeds and
+/// otherwise falls back to the system date. It is a wall clock, so its time can
+/// move backward when the system date or the synchronized time changes.
+///
+/// To control time in tests, pass a ``ManualClock`` to the cache instead.
+public final class NetworkTimeClock: CacheClock, @unchecked Sendable {
+    private static let productionInstance = NetworkTimeClock()
 
-    /// The process-wide clock used by ``Date/monotonic``.
-    public static var shared: MonotonicClock {
+    /// The process-wide clock used by caches that don't specify one.
+    public static var shared: NetworkTimeClock {
         productionInstance
     }
 
     private let lock = NSLock()
     private var controlledDate: Date?
 
-    /// The controlled date, synchronized NTP date, or current system date.
+    /// The synchronized NTP date, or the current system date.
     ///
-    /// A controlled date takes precedence over all other time sources.
+    /// A controlled date set by the deprecated test methods takes precedence over all other time sources.
     public var now: Date {
         if let controlledDate = lock.withLock({ controlledDate }) {
             return controlledDate
@@ -59,6 +60,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///   the controlled date backward.
     /// - Returns: The updated controlled date, or the current system date when
     ///   the clock isn't controlled.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(_ value: TimeInterval) -> Date {
         lock.withLock {
             guard let date = controlledDate else {
@@ -74,6 +76,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///
     /// - Parameter value: The number of seconds to add.
     /// - Returns: The result of advancing the clock.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(seconds value: Int) -> Date {
         tick(TimeInterval(value))
     }
@@ -82,6 +85,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///
     /// - Parameter value: The number of minutes to add.
     /// - Returns: The result of advancing the clock.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(minutes value: Int) -> Date {
         tick(seconds: 60 * value)
     }
@@ -90,6 +94,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///
     /// - Parameter value: The number of hours to add.
     /// - Returns: The result of advancing the clock.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(hours value: Int) -> Date {
         tick(minutes: 60 * value)
     }
@@ -98,6 +103,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///
     /// - Parameter value: The number of 24-hour periods to add.
     /// - Returns: The result of advancing the clock.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(days value: Int) -> Date {
         tick(hours: 24 * value)
     }
@@ -106,6 +112,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///
     /// - Parameter value: The number of seven-day periods to add.
     /// - Returns: The result of advancing the clock.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func tick(weeks value: Int) -> Date {
         tick(days: 7 * value)
     }
@@ -115,6 +122,7 @@ public final class MonotonicClock: @unchecked Sendable {
     /// - Parameter unixTimestamp: The number of seconds since January 1, 1970,
     ///   at 00:00:00 UTC.
     /// - Returns: The new controlled date.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     @discardableResult public func set(unixTimestamp: TimeInterval) -> Date {
         lock.withLock {
             let date = Date(timeIntervalSince1970: unixTimestamp)
@@ -136,6 +144,7 @@ public final class MonotonicClock: @unchecked Sendable {
     ///   - hour: The hour component. The default is `0`.
     ///   - minute: The minute component. The default is `0`.
     ///   - second: The second component. The default is `0`.
+    @available(*, deprecated, message: "Pass a ManualClock to Cache instead.")
     public func reset(
         year: Int,
         month: Int = 1,
@@ -160,16 +169,22 @@ public final class MonotonicClock: @unchecked Sendable {
     }
 }
 
+/// The previous name of ``NetworkTimeClock``.
+@available(*, deprecated, renamed: "NetworkTimeClock")
+public typealias MonotonicClock = NetworkTimeClock
+
 public extension Date {
-    /// The date reported by ``MonotonicClock/shared``.
+    /// The date reported by ``NetworkTimeClock/shared``.
+    @available(*, deprecated, message: "Use NetworkTimeClock.shared.now.")
     static var monotonic: Date {
-        MonotonicClock.shared.now
+        NetworkTimeClock.shared.now
     }
 
     /// The interval from the shared clock's current date to this date.
     ///
-    /// A positive value means this date is later than ``monotonic``.
+    /// A positive value means this date is later than ``NetworkTimeClock/shared``'s current date.
+    @available(*, deprecated, message: "Use timeIntervalSince(NetworkTimeClock.shared.now).")
     var timeIntervalSinceMonotonic: TimeInterval {
-        timeIntervalSince(.monotonic)
+        timeIntervalSince(NetworkTimeClock.shared.now)
     }
 }

@@ -18,16 +18,15 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Send
     /// The value stored in the entry.
     public private(set) var value: CachedType
 
-    /// Creates a cache entry with the current monotonic date as its creation and last-access dates.
+    /// Creates a cache entry with the current date of ``NetworkTimeClock/shared`` as its
+    /// creation and last-access dates.
     ///
     /// - Parameters:
     ///   - key: The unique key identifying the value.
     ///   - value: The value to store.
     public init(key: KeyType, value: CachedType) {
-        self.key = key
-        self.value = value
-        creation = Date.monotonic
-        lastAccess = Date.monotonic
+        let now = NetworkTimeClock.shared.now
+        self.init(key: key, value: value, creation: now, lastAccess: now)
     }
 
     /// Creates a cache entry with explicitly supplied timestamps.
@@ -47,9 +46,9 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Send
         self.lastAccess = lastAccess
     }
 
-    /// Update the last access
-    mutating func updateLastAccess() {
-        lastAccess = Date.monotonic
+    /// Records an access at a date.
+    mutating func updateLastAccess(at date: Date) {
+        lastAccess = date
         if accessCount < .max {
             accessCount += 1
         }
