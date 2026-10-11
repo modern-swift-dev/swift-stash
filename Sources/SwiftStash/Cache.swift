@@ -26,7 +26,9 @@ public enum EvictionPolicy: Sendable, Equatable {
 /// An actor-isolated cache backed by a storage engine.
 ///
 /// The cache loads entries from its storage engine during initialization and persists additions
-/// and removals through that engine. With the LRU policy, it also persists the access date of each read. Use an ``EvictionPolicy`` to choose the
+/// and removals through that engine. With the LRU policy, it also persists the access date of each read.
+/// When the engine supports it, values are read from storage the first time they're needed and then
+/// kept in memory until ``unloadValues()`` releases them. Use an ``EvictionPolicy`` to choose the
 /// order used when reducing the cache to a maximum number of entries.
 ///
 /// Example usage:
@@ -51,14 +53,14 @@ public actor Cache<StorageEngineType: StorageEngine> {
 
     /// A Boolean value indicating whether the cache contains no entries.
     public var isEmpty: Bool {
-        entries.isEmpty
+        slots.isEmpty
     }
 
     /// The number of entries currently held by the cache.
     ///
     /// The count includes expired entries that haven't been read or evicted yet.
     public var count: Int {
-        entries.count
+        slots.count
     }
 
     /// The total cost of the entries currently held by the cache, or `0` when the cache has no cost limit.
@@ -79,10 +81,22 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// The maximum total cost kept after each addition, if any
     private let costLimit: CostLimit<CacheType>?
 
-    /// The Entries
-    private var entries: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
+    /// Whether the storage engine loads values on demand, so values can be released from memory
+    private let loadsValuesLazily: Bool
 
-    /// Creates a cache and loads any entries provided by its storage engine.
+    /// The entries, each with its value once loaded
+    private var slots: [KeyType: Slot] = [:]
+
+    /// An entry's metadata, and its value once loaded from storage
+    private struct Slot {
+        var metadata: CacheEntryMetadata<KeyType>
+        var value: CacheType?
+    }
+
+    /// Creates a cache and loads the entries provided by its storage engine.
+    ///
+    /// When the storage engine supports it, as ``DiskStorageEngine`` does, the cache loads only
+    /// the entries' metadata here and reads each value from storage the first time it's needed.
     ///
     /// - Parameters:
     ///   - policy: The policy used by ``evictExpired()`` and ``evictUntil(maxCount:)``. Defaults to LRU with a 300-second threshold.
@@ -94,7 +108,9 @@ public actor Cache<StorageEngineType: StorageEngine> {
     ///   - costLimit: The maximum total cost of the entries, and how to compute each value's cost.
     ///     After each addition, the cache removes expired entries and then evicts entries in policy
     ///     order until the total cost is within the limit. Pass `nil`, the default, for no limit.
-    ///     Entries loaded from storage aren't evicted until the next addition.
+    ///     Entries loaded from storage aren't evicted until the next addition. Entries whose values
+    ///     haven't been loaded count with the cost recorded when they were stored; values stored
+    ///     by a cache without a cost limit are loaded here to compute their cost.
     public init(
         policy: EvictionPolicy = .lru(threshold: 300),
         storageEngine: StorageEngineType,
@@ -107,15 +123,33 @@ public actor Cache<StorageEngineType: StorageEngine> {
         self.maxCount = maxCount
         self.costLimit = costLimit
         self.storageEngine = storageEngine
-        var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
-        var loadedCost = 0
-        for var entry in storageEngine.load() {
-            entry.cost = costLimit?.cost(of: entry.value) ?? 0
-            loadedCost += entry.cost - (loaded[entry.key]?.cost ?? 0)
-            loaded[entry.key] = entry
+        var loaded: [KeyType: Slot] = [:]
+        if let metadata = storageEngine.loadMetadata() {
+            loadsValuesLazily = true
+            for var entry in metadata {
+                var value: CacheType?
+                if let costLimit, entry.cost == nil {
+                    // Stored without a cost limit, so the value is needed to compute its cost.
+                    guard let loadedValue = storageEngine.loadValue(for: entry.key) else {
+                        continue
+                    }
+                    value = loadedValue
+                    entry.cost = costLimit.cost(of: loadedValue)
+                } else if costLimit == nil {
+                    entry.cost = nil
+                }
+                loaded[entry.key] = Slot(metadata: entry, value: value)
+            }
+        } else {
+            loadsValuesLazily = false
+            for entry in storageEngine.load() {
+                var metadata = entry.metadata
+                metadata.cost = costLimit?.cost(of: entry.value)
+                loaded[entry.key] = Slot(metadata: metadata, value: entry.value)
+            }
         }
-        entries = loaded
-        totalCost = loadedCost
+        slots = loaded
+        totalCost = loaded.values.reduce(0) { $0 + ($1.metadata.cost ?? 0) }
     }
 
     /// Creates a cache and loads any entries provided by its storage engine.
@@ -134,22 +168,20 @@ public actor Cache<StorageEngineType: StorageEngine> {
     ///
     /// - Returns: An unordered array of cache keys.
     public func keys() -> [KeyType] {
-        Array(entries.keys)
+        Array(slots.keys)
     }
 
     /// Returns all unexpired values held by the cache.
     ///
     /// Listing values doesn't record an access to each entry, so it doesn't change LRU
     /// eviction order or extend LRU lifetimes. Expired entries are removed instead of returned.
+    /// Values that haven't been loaded yet are read from storage; entries whose values can't
+    /// be read are removed.
     ///
     /// - Returns: An unordered array of cached values.
     public func values() -> [CacheType] {
-        let now = clock.now
-        let expiredKeys = entries.values.compactMap { isExpired($0, at: now) ? $0.key : nil }
-        for key in expiredKeys {
-            remove(key)
-        }
-        return entries.values.map(\.value)
+        evictExpired()
+        return Array(slots.keys).compactMap { loadedValue(for: $0) }
     }
 
     /// Returns the entry for a key and records an access when it exists.
@@ -165,38 +197,81 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// Returns whether the cache holds an unexpired entry for a key.
     ///
     /// Unlike reading the value, this method doesn't record an access, so it doesn't
-    /// affect LRU eviction order.
+    /// affect LRU eviction order, and it doesn't load the value from storage.
     ///
     /// - Parameter key: The key identifying the entry.
     /// - Returns: `true` when the cache holds an unexpired entry for `key`; otherwise, `false`.
     public func contains(_ key: KeyType) -> Bool {
-        guard let entry = entries[key] else {
+        guard let slot = slots[key] else {
             return false
         }
-        return !isExpired(entry, at: clock.now)
+        return !isExpired(slot.metadata, at: clock.now)
+    }
+
+    /// Releases the values held in memory that the storage engine can load again on demand.
+    ///
+    /// Entries stay in the cache, and their values are read from storage the next time they're
+    /// needed. Call this method to reduce memory use, for example when the system reports
+    /// memory pressure. It has no effect when the storage engine can't load values on demand,
+    /// as with ``MemoryStorageEngine``.
+    public func unloadValues() {
+        guard loadsValuesLazily else {
+            return
+        }
+        for key in slots.keys {
+            slots[key]?.value = nil
+        }
     }
 
     /// Records an access to an unexpired entry, or removes the entry if it has expired.
     ///
     /// Only the LRU policy depends on access dates, so other policies don't persist accesses.
     private func access(_ key: KeyType, at now: Date) -> CacheEntry<KeyType, CacheType>? {
-        guard var entry = entries[key] else {
+        guard let slot = slots[key] else {
             return nil
         }
-        guard !isExpired(entry, at: now) else {
+        guard !isExpired(slot.metadata, at: now) else {
             remove(key)
             return nil
         }
-        entry.updateLastAccess(at: now)
-        entries[key] = entry
+        guard let value = loadedValue(for: key), var metadata = slots[key]?.metadata else {
+            return nil
+        }
+        metadata.updateLastAccess(at: now)
+        slots[key]?.metadata = metadata
+        let entry = CacheEntry(metadata: metadata, value: value)
         if case .lru = policy {
             storageEngine.persist(entry)
         }
         return entry
     }
 
+    /// Returns an entry's value, loading it from storage if needed.
+    ///
+    /// An entry whose value can't be loaded is removed.
+    private func loadedValue(for key: KeyType) -> CacheType? {
+        guard var slot = slots[key] else {
+            return nil
+        }
+        if let value = slot.value {
+            return value
+        }
+        guard let value = storageEngine.loadValue(for: key) else {
+            remove(key)
+            return nil
+        }
+        slot.value = value
+        if let costLimit {
+            let cost = costLimit.cost(of: value)
+            totalCost += cost - (slot.metadata.cost ?? 0)
+            slot.metadata.cost = cost
+        }
+        slots[key] = slot
+        return value
+    }
+
     /// Whether an entry has reached its own expiration date or the eviction policy's threshold.
-    private func isExpired(_ entry: CacheEntry<KeyType, CacheType>, at now: Date) -> Bool {
+    private func isExpired(_ entry: CacheEntryMetadata<KeyType>, at now: Date) -> Bool {
         if let expiration = entry.expiration, expiration <= now {
             return true
         }
@@ -227,7 +302,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
                 creation: creation,
                 lastAccess: creation,
                 expiration: expiration,
-                cost: costLimit?.cost(of: value.1) ?? 0
+                cost: costLimit?.cost(of: value.1)
             )
             store(entry)
             storageEngine.persist(entry)
@@ -258,7 +333,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
             creation: now,
             lastAccess: now,
             expiration: lifetime.map { now.addingTimeInterval($0) },
-            cost: costLimit?.cost(of: value) ?? 0
+            cost: costLimit?.cost(of: value)
         )
         store(entry)
         storageEngine.persist(entry)
@@ -268,18 +343,18 @@ public actor Cache<StorageEngineType: StorageEngine> {
 
     /// Inserts or replaces an entry, keeping the total cost up to date.
     private func store(_ entry: CacheEntry<KeyType, CacheType>) {
-        totalCost += entry.cost - (entries[entry.key]?.cost ?? 0)
-        entries[entry.key] = entry
+        totalCost += (entry.cost ?? 0) - (slots[entry.key]?.metadata.cost ?? 0)
+        slots[entry.key] = Slot(metadata: entry.metadata, value: entry.value)
     }
 
     /// Evicts entries when the cache exceeds its maximum count or cost.
     private func enforceLimits() {
-        if let maxCount, entries.count > maxCount {
+        if let maxCount, slots.count > maxCount {
             evictUntil(maxCount: maxCount)
         }
         if let costLimit, totalCost > costLimit.maxCost {
             evictExpired()
-            for entry in entries.values.sorted(by: evictsBefore) {
+            for entry in evictionOrder() {
                 guard totalCost > costLimit.maxCost else {
                     break
                 }
@@ -292,9 +367,14 @@ public actor Cache<StorageEngineType: StorageEngine> {
     ///
     /// - Parameter key: The key of the entry to remove. A missing key has no effect.
     public func remove(_ key: KeyType) {
-        if let entry = entries.removeValue(forKey: key) {
-            totalCost -= entry.cost
-            storageEngine.delete(entry)
+        guard let slot = slots.removeValue(forKey: key) else {
+            return
+        }
+        totalCost -= slot.metadata.cost ?? 0
+        if let value = slot.value {
+            storageEngine.delete(CacheEntry(metadata: slot.metadata, value: value))
+        } else {
+            storageEngine.delete(forKey: key)
         }
     }
 
@@ -325,7 +405,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
 
     /// Removes all entries from the cache and clears its storage engine.
     public func clear() {
-        entries.removeAll()
+        slots.removeAll()
         totalCost = 0
         storageEngine.clear()
     }
@@ -336,7 +416,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// FIFO and LIFO policies compare the creation date; LRU compares the last-access date.
     public func evictExpired() {
         let now = clock.now
-        let expiredKeys = entries.values.compactMap { isExpired($0, at: now) ? $0.key : nil }
+        let expiredKeys = slots.values.compactMap { isExpired($0.metadata, at: now) ? $0.metadata.key : nil }
         for key in expiredKeys {
             remove(key)
         }
@@ -363,20 +443,16 @@ public actor Cache<StorageEngineType: StorageEngine> {
         evictExpired()
 
         // if the number of entries is still over, when we need to delete more entries
-        guard entries.count > maxCount else {
-            return entries.count
+        guard slots.count > maxCount else {
+            return slots.count
         }
-
-        // Calculate the nb entries to delete
-        let nbEntriesToDelete = entries.count - maxCount
 
         // Evict according to the eviction policy
-        let values = entries.values.sorted(by: evictsBefore).prefix(nbEntriesToDelete)
-        for value in values {
-            remove(value.key)
+        for entry in evictionOrder().prefix(slots.count - maxCount) {
+            remove(entry.key)
         }
 
-        return entries.count
+        return slots.count
     }
 
     /// Removes expired entries, then evicts entries until the cache contains at most a given number of items.
@@ -385,18 +461,20 @@ public actor Cache<StorageEngineType: StorageEngine> {
         evictUntil(maxCount: max)
     }
 
-    /// Whether the eviction policy removes one entry before another.
+    /// The entries' metadata in the order the eviction policy removes them.
     ///
     /// Entries with equal dates are ordered by their keys' string values, so the order
     /// doesn't depend on dictionary iteration order.
-    private func evictsBefore(_ lhs: CacheEntry<KeyType, CacheType>, _ rhs: CacheEntry<KeyType, CacheType>) -> Bool {
-        switch policy {
-            case .fifo:
-                (lhs.creation, lhs.key.stringValue) < (rhs.creation, rhs.key.stringValue)
-            case .lifo:
-                (lhs.creation, lhs.key.stringValue) > (rhs.creation, rhs.key.stringValue)
-            case .lru:
-                (lhs.lastAccess, lhs.key.stringValue) < (rhs.lastAccess, rhs.key.stringValue)
+    private func evictionOrder() -> [CacheEntryMetadata<KeyType>] {
+        slots.values.map(\.metadata).sorted { lhs, rhs in
+            switch policy {
+                case .fifo:
+                    (lhs.creation, lhs.key.stringValue) < (rhs.creation, rhs.key.stringValue)
+                case .lifo:
+                    (lhs.creation, lhs.key.stringValue) > (rhs.creation, rhs.key.stringValue)
+                case .lru:
+                    (lhs.lastAccess, lhs.key.stringValue) < (rhs.lastAccess, rhs.key.stringValue)
+            }
         }
     }
 }

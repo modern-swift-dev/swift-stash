@@ -50,6 +50,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
     /// Files discovered during loading, including legacy spellings of equivalent keys.
     private var entryFiles: [KeyType: Set<URL>] = [:]
+
+    /// The file holding each key's newest entry, which isn't the canonical file only when migrating it failed.
+    private var currentFiles: [KeyType: URL] = [:]
     private var hasLoaded = false
 
     /// Creates an engine that stores entries in a named directory below the app cache directory.
@@ -135,56 +138,40 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// - Returns: Entries successfully read and deserialized from files with the
     ///   `cache_entry` extension. Their order is unspecified.
     public func load() -> [CacheEntry<KeyType, StoredType>] {
-        hasLoaded = true
-        var entries: [KeyType: LoadedEntry] = [:]
-        entryFiles.removeAll()
-        let fileURLs = (try? FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        )) ?? []
-        for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where fileURL.pathExtension == "cache_entry" {
-            do {
-                let file = try decodeFile(Data(contentsOf: fileURL))
-                if let key = KeyType(stringValue: file.header.key),
-                   let value = try serializer.deserialize(file.value) {
-                    let cacheEntry = CacheEntry<KeyType, StoredType>(
-                        key: key,
-                        value: value,
-                        creation: file.header.creation,
-                        lastAccess: file.header.lastAccess,
-                        accessCount: file.header.accessCount,
-                        expiration: file.header.expiration,
-                        cost: file.header.cost
-                    )
-                    entryFiles[key, default: []].insert(fileURL)
-                    if let previous = entries[key],
-                       previous.entry.creation > cacheEntry.creation ||
-                       (previous.entry.creation == cacheEntry.creation && previous.entry.lastAccess >= cacheEntry.lastAccess) {
-                        continue
-                    }
-                    entries[key] = LoadedEntry(entry: cacheEntry, file: file)
-                } else {
-                    try? FileManager.default.removeItem(at: fileURL)
-                }
-            } catch {
-                log(error)
-                try? FileManager.default.removeItem(at: fileURL)
-            }
+        scan().compactMap { key, header in
+            loadValue(for: key).map { CacheEntry(metadata: header.metadata(for: key), value: $0) }
         }
-        for (key, loaded) in entries {
-            let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
-            guard entryFiles[key] != Set([url]) || loaded.file.isLegacyFormat else {
-                continue
-            }
-            do {
-                let data = try encodeFile(header: loaded.file.header, value: loaded.file.value)
-                try data.write(to: url, options: writingOptions)
-                removeLegacyFiles(for: key, keeping: url)
-            } catch {
-                log(error)
-            }
+    }
+
+    /// Loads the metadata of the stored entries by reading only each file's header.
+    ///
+    /// Files are merged and migrated as in ``load()``, but values aren't read or deserialized.
+    ///
+    /// - Returns: The metadata of the entries stored in files with the `cache_entry` extension.
+    public func loadMetadata() -> [CacheEntryMetadata<KeyType>]? {
+        scan().map { key, header in header.metadata(for: key) }
+    }
+
+    /// Reads and deserializes the value stored for a key.
+    ///
+    /// A file that can't be read, decoded, or deserialized is removed.
+    ///
+    /// - Parameter key: The key of the entry whose value to load.
+    /// - Returns: The stored value, or `nil` when it's missing or can't be read.
+    public func loadValue(for key: KeyType) -> StoredType? {
+        if !hasLoaded {
+            _ = scan()
         }
-        return entries.values.map(\.entry)
+        let url = currentFiles[key] ?? directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+        do {
+            if let value = try serializer.deserialize(decodeFile(Data(contentsOf: url)).value) {
+                return value
+            }
+        } catch {
+            log(error)
+        }
+        delete(forKey: key)
+        return nil
     }
 
     /// Removes the file associated with an entry's key.
@@ -193,11 +180,21 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///
     /// - Parameter entry: The entry whose key identifies the file to remove.
     public func delete(_ entry: CacheEntry<KeyType, StoredType>) {
+        delete(forKey: entry.key)
+    }
+
+    /// Removes the files associated with a key.
+    ///
+    /// Failures to remove the files are ignored.
+    ///
+    /// - Parameter key: The key whose files to remove.
+    public func delete(forKey key: KeyType) {
         if !hasLoaded {
-            _ = load()
+            _ = scan()
         }
-        let url = directory.appendingPathComponent(entry.key.stringValue.cacheEntryFileName)
-        let files = (entryFiles.removeValue(forKey: entry.key) ?? []).union([url])
+        let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+        let files = (entryFiles.removeValue(forKey: key) ?? []).union([url])
+        currentFiles.removeValue(forKey: key)
         for file in files {
             try? FileManager.default.removeItem(at: file)
         }
@@ -212,7 +209,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// - Returns: `true` if serialization, encoding, and writing succeed; otherwise, `false`.
     @discardableResult public func persist(_ entry: CacheEntry<KeyType, StoredType>) -> Bool {
         if !hasLoaded {
-            _ = load()
+            _ = scan()
         }
         do {
             let stringKey = entry.key.stringValue
@@ -227,6 +224,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             )
             let diskData = try encodeFile(header: header, value: serializer.serialize(entry.value))
             try diskData.write(to: url, options: writingOptions)
+            currentFiles[entry.key] = url
             removeLegacyFiles(for: entry.key, keeping: url)
             return true
         } catch {
@@ -242,6 +240,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// are ignored.
     public func clear() {
         entryFiles.removeAll()
+        currentFiles.removeAll()
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
@@ -286,7 +285,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                 lastAccess: legacy.lastAccess,
                 accessCount: legacy.accessCount ?? 0,
                 expiration: legacy.expiration,
-                cost: 0
+                cost: nil
             )
             return EntryFile(header: header, value: legacy.value, isLegacyFormat: true)
         }
@@ -304,9 +303,82 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         return EntryFile(header: header, value: Data(data[headerEnd...]), isLegacyFormat: false)
     }
 
-    private struct LoadedEntry {
-        let entry: CacheEntry<KeyType, StoredType>
-        let file: EntryFile
+    /// Reads the header of every entry file, merges equivalent keys, and migrates legacy files.
+    ///
+    /// - Returns: The header of each key's newest entry.
+    private func scan() -> [KeyType: EntryHeader] {
+        hasLoaded = true
+        entryFiles.removeAll()
+        currentFiles.removeAll()
+        var newest: [KeyType: ScannedFile] = [:]
+        let fileURLs = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where fileURL.pathExtension == "cache_entry" {
+            do {
+                let scanned = try readHeader(of: fileURL)
+                guard let key = KeyType(stringValue: scanned.header.key) else {
+                    try? FileManager.default.removeItem(at: fileURL)
+                    continue
+                }
+                entryFiles[key, default: []].insert(fileURL)
+                if let previous = newest[key]?.header,
+                   previous.creation > scanned.header.creation ||
+                   (previous.creation == scanned.header.creation && previous.lastAccess >= scanned.header.lastAccess) {
+                    continue
+                }
+                newest[key] = scanned
+            } catch {
+                log(error)
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+        }
+        var headers: [KeyType: EntryHeader] = [:]
+        for (key, scanned) in newest {
+            headers[key] = scanned.header
+            currentFiles[key] = scanned.url
+            let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+            guard entryFiles[key] != Set([url]) || scanned.isLegacyFormat else {
+                continue
+            }
+            do {
+                let file = try decodeFile(Data(contentsOf: scanned.url))
+                try encodeFile(header: file.header, value: file.value).write(to: url, options: writingOptions)
+                currentFiles[key] = url
+                removeLegacyFiles(for: key, keeping: url)
+            } catch {
+                log(error)
+            }
+        }
+        return headers
+    }
+
+    /// Reads an entry file's header without reading its value, except for files in the
+    /// JSON format of earlier releases, which are read whole.
+    private func readHeader(of url: URL) throws -> ScannedFile {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let prefixLength = entryFileSignature.count + MemoryLayout<UInt32>.size
+        let prefix = try handle.read(upToCount: prefixLength) ?? Data()
+        guard prefix.count == prefixLength, prefix.starts(with: entryFileSignature) else {
+            let file = try decodeFile(Data(contentsOf: url))
+            return ScannedFile(url: url, header: file.header, isLegacyFormat: file.isLegacyFormat)
+        }
+        let headerLength = prefix.dropFirst(entryFileSignature.count).reduce(0) { $0 << 8 | Int($1) }
+        let headerData = try handle.read(upToCount: headerLength) ?? Data()
+        guard headerData.count == headerLength else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let header = try decoder.decode(EntryHeader.self, from: headerData)
+        return ScannedFile(url: url, header: header, isLegacyFormat: false)
+    }
+
+    /// An entry file's location and header
+    private struct ScannedFile {
+        let url: URL
+        let header: EntryHeader
+        let isLegacyFormat: Bool
     }
 
     /// The decoded contents of an entry file
@@ -323,7 +395,20 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         var lastAccess: Date
         var accessCount: Int64
         var expiration: Date?
-        var cost: Int
+
+        /// Absent when the entry was stored by a cache without a cost limit
+        var cost: Int?
+
+        func metadata(for key: KeyType) -> CacheEntryMetadata<KeyType> {
+            CacheEntryMetadata(
+                key: key,
+                creation: creation,
+                lastAccess: lastAccess,
+                accessCount: accessCount,
+                expiration: expiration,
+                cost: cost
+            )
+        }
     }
 
     /// An entry file in the JSON format of earlier releases, with a base64-encoded value

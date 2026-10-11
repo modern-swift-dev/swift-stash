@@ -15,6 +15,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - CI coverage for Swift 6.0, tvOS, watchOS, visionOS, and the example packages.
 - Per-entry lifetimes: an `expiresAfter` parameter on the `add` methods, and `CacheEntry.expiration`. An entry expires at its own expiration date or at the policy's threshold, whichever comes first. Disk storage persists the expiration.
 - Cost limits: a `costLimit` parameter on `Cache.init` takes a maximum total cost and a function that computes each value's cost. The cache evicts entries in policy order after each addition to stay within the limit. `Cache.totalCost` and `CacheEntry.cost` report the costs.
+- Lazy loading: a cache backed by `DiskStorageEngine` reads only entry metadata when it's created and reads each value on first use. `Cache.unloadValues()` releases loaded values from memory. Custom storage engines can opt in by implementing the new `StorageEngine` requirements `loadMetadata()`, `loadValue(for:)`, and `delete(forKey:)`, which have default implementations, and returning `CacheEntryMetadata`.
 
 ### Changed
 

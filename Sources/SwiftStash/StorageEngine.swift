@@ -32,4 +32,46 @@ public protocol StorageEngine {
 
     /// Removes all entries managed by the storage engine.
     func clear()
+
+    /// Loads the metadata of the stored entries without their values.
+    ///
+    /// Implement this method, ``loadValue(for:)``, and ``delete(forKey:)`` to let a cache
+    /// load values on demand instead of reading every value when it's created.
+    ///
+    /// - Returns: The metadata of the stored entries, or `nil` when the engine loads
+    ///   values only through ``load()``. The default implementation returns `nil`.
+    func loadMetadata() -> [CacheEntryMetadata<KeyType>]?
+
+    /// Loads the value stored for a key.
+    ///
+    /// A cache calls this method only when ``loadMetadata()`` returns a non-`nil` value.
+    ///
+    /// - Parameter key: The key of the entry whose value to load.
+    /// - Returns: The stored value, or `nil` when it's missing or can't be read.
+    ///   The default implementation returns `nil`.
+    func loadValue(for key: KeyType) -> StoredType?
+
+    /// Removes the entry for a key from storage.
+    ///
+    /// A cache calls this method instead of ``delete(_:)`` to remove an entry whose value
+    /// it hasn't loaded. The default implementation does nothing.
+    ///
+    /// - Parameter key: The key of the entry to remove.
+    func delete(forKey key: KeyType)
+}
+
+public extension StorageEngine {
+
+    /// Returns `nil`, so caches load values through ``load()``.
+    func loadMetadata() -> [CacheEntryMetadata<KeyType>]? {
+        nil
+    }
+
+    /// Returns `nil`.
+    func loadValue(for _: KeyType) -> StoredType? {
+        nil
+    }
+
+    /// Does nothing.
+    func delete(forKey _: KeyType) {}
 }

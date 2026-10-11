@@ -93,6 +93,8 @@ The engine creates the named subdirectory when it is initialized. Disk writes re
 
 Each entry file holds a small metadata header followed by the serialized value as is. Files written by earlier releases remain readable and are rewritten in the current format when loaded, but earlier releases can't read the current format.
 
+A cache backed by `DiskStorageEngine` reads only each entry's metadata when it's created, and reads a value from disk the first time it's needed. Loaded values stay in memory for fast reads; call `unloadValues()` to release them, for example when the system reports memory pressure. The entries stay on disk and are read again on demand.
+
 You can support another persistence mechanism by conforming a type to `StorageEngine`, or support another disk representation by conforming to `DiskStorageSerializer`.
 
 ## Eviction

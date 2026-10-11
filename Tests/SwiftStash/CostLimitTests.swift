@@ -115,7 +115,7 @@ struct CostLimitTests {
         let cache = Cache(storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         let entry = await cache.add(String(repeating: "x", count: 1000), for: "key")
 
-        #expect(entry.cost == 0)
+        #expect(entry.cost == nil)
         #expect(await cache.totalCost == 0)
     }
 
