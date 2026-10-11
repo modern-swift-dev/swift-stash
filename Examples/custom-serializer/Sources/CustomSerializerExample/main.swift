@@ -29,7 +29,7 @@ private struct TemperatureSerializer: DiskStorageSerializer {
             directory: directoryName,
             serializer: TemperatureSerializer()
         )
-        let cache = Cache(storagePolicy: storage)
+        let cache = Cache(storageEngine: storage)
 
         await cache.add(Temperature(celsius: 21.5), for: "office")
 

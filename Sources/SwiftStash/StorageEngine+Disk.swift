@@ -27,7 +27,7 @@ private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 ///     serializer: JsonDiskStorageSerializer<MyType>()
 /// )
 /// ```
-public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType, Serializer: DiskStorageSerializer>: StorageEngine where StoredType == Serializer.SerializedType {
+public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializer: DiskStorageSerializer>: StorageEngine where StoredType == Serializer.SerializedType {
 
     /// The writing options
     private let writingOptions: Data.WritingOptions

@@ -15,7 +15,7 @@ private enum ArticleKey: String, CacheKey {
         let storage = MemoryStorageEngine<ArticleKey, Article>()
         let cache = Cache(
             policy: .lru(threshold: 10 * 60),
-            storagePolicy: storage
+            storageEngine: storage
         )
 
         await cache.add(Article(id: .concurrency, title: "A tour of Swift concurrency"))
@@ -25,7 +25,7 @@ private enum ArticleKey: String, CacheKey {
             print("Read: \(article.title)")
         }
 
-        let remainingCount = await cache.evictUntil(maxNbItems: 1)
+        let remainingCount = await cache.evictUntil(maxCount: 1)
         print("Entries after eviction: \(remainingCount)")
     }
 }

@@ -11,7 +11,7 @@ public protocol StorageEngine {
     associatedtype KeyType: CacheKey
 
     /// The cache value type stored by this engine.
-    associatedtype StoredType: CacheableDataType
+    associatedtype StoredType: Sendable
 
     /// Loads the entries currently available from storage.
     ///

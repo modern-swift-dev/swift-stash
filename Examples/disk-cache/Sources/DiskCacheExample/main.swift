@@ -16,7 +16,7 @@ private struct Profile: Codable, Identifiable, Sendable {
         )
         let cache = Cache(
             policy: .lru(threshold: 24 * 60 * 60),
-            storagePolicy: storage
+            storageEngine: storage
         )
 
         let profile = Profile(id: "42", displayName: "Ada")

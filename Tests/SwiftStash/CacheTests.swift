@@ -36,7 +36,7 @@ struct CacheTests {
 
     @Test func fifoEvictionByThreshold() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .fifo(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add items individually
         await cache.add(TestItem(id: "1", value: "first"))
@@ -56,7 +56,7 @@ struct CacheTests {
 
     @Test func fifoEvictionByCount() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .fifo(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add items individually
         await cache.add(TestItem(id: "1", value: "first"))
@@ -67,7 +67,7 @@ struct CacheTests {
         clock.advance(by: 1)
 
         // Evict until only 1 remains
-        await cache.evictUntil(maxNbItems: 1)
+        await cache.evictUntil(maxCount: 1)
 
         // Should have 1 item - the last one added (since FIFO removes oldest first)
         let count = await cache.count
@@ -80,7 +80,7 @@ struct CacheTests {
 
     @Test func lifoEvictionByThreshold() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .fifo(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .fifo(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add first two items
         await cache.add(TestItem(id: "1", value: "first"))
@@ -101,7 +101,7 @@ struct CacheTests {
 
     @Test func lifoEvictionByCount() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lifo(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lifo(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add items individually
         await cache.add(TestItem(id: "1", value: "first"))
@@ -112,7 +112,7 @@ struct CacheTests {
         clock.advance(by: 1)
 
         // Evict until only 1 remains
-        await cache.evictUntil(maxNbItems: 1)
+        await cache.evictUntil(maxCount: 1)
 
         // Should have 1 item - the first one added (since LIFO removes newest first)
         let count = await cache.count
@@ -125,7 +125,7 @@ struct CacheTests {
 
     @Test func lruEvictionByThreshold() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add items individually
         await cache.add(TestItem(id: "1", value: "first"))
@@ -150,7 +150,7 @@ struct CacheTests {
 
     @Test func lruEvictionByCount() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add items individually
         await cache.add(TestItem(id: "1", value: "first"))
@@ -167,7 +167,7 @@ struct CacheTests {
         clock.advance(by: 1)
 
         // Evict until only 1 remains
-        await cache.evictUntil(maxNbItems: 1)
+        await cache.evictUntil(maxCount: 1)
 
         // Should keep most recently accessed item
         let count = await cache.count
@@ -180,7 +180,7 @@ struct CacheTests {
 
     @Test func keysReturnsAllKeys() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "a", value: "first"), for: "a")
         await cache.add(TestItem(id: "b", value: "second"), for: "b")
@@ -192,7 +192,7 @@ struct CacheTests {
 
     @Test func valuesReturnsAllValuesAndUpdatesAccess() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
         await cache.add(TestItem(id: "2", value: "second"), for: "2")
@@ -205,7 +205,7 @@ struct CacheTests {
 
     @Test func entryReturnsEntryAndUpdatesAccess() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
 
@@ -231,7 +231,7 @@ struct CacheTests {
                 directory: directory,
                 serializer: StringDiskStorageSerializer()
             )
-            let cache = Cache(policy: .lru(threshold: 10), storagePolicy: storage, clock: clock)
+            let cache = Cache(policy: .lru(threshold: 10), storageEngine: storage, clock: clock)
             await cache.add([("first", "one"), ("second", "two")])
             clock.advance(by: 9)
 
@@ -247,7 +247,7 @@ struct CacheTests {
             clock.advance(by: 2)
             let reloaded = Cache(
                 policy: .lru(threshold: 10),
-                storagePolicy: DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                storageEngine: DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
                     directory: directory,
                     serializer: StringDiskStorageSerializer()
                 ),
@@ -267,9 +267,9 @@ struct CacheTests {
     @Test func expirationIncludesThresholdBoundaryForEveryPolicy() async {
         typealias TestCache = Cache<MemoryStorageEngine<String, String>, String>
         let caches = [
-            TestCache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine(), clock: clock),
-            TestCache(policy: .lifo(threshold: 10), storagePolicy: MemoryStorageEngine(), clock: clock),
-            TestCache(policy: .lru(threshold: 10), storagePolicy: MemoryStorageEngine(), clock: clock)
+            TestCache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine(), clock: clock),
+            TestCache(policy: .lifo(threshold: 10), storageEngine: MemoryStorageEngine(), clock: clock),
+            TestCache(policy: .lru(threshold: 10), storageEngine: MemoryStorageEngine(), clock: clock)
         ]
         for cache in caches {
             await cache.add("old", for: "expired")
@@ -301,7 +301,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func subscriptDoesNotReturnExpiredValues(
         kind: PolicyKind
     ) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -312,7 +312,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func entryDoesNotReturnExpiredEntries(
         kind: PolicyKind
     ) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -323,7 +323,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func valuesSkipsExpiredValues(
         kind: PolicyKind
     ) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("old", for: "expired")
         clock.advance(by: 5)
         await cache.add("new", for: "fresh")
@@ -336,7 +336,7 @@ struct CacheTests {
     @Test(arguments: PolicyKind.allCases) func valuesReadJustBeforeExpiryAreReturned(
         kind: PolicyKind
     ) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 9.999)
 
@@ -347,7 +347,7 @@ struct CacheTests {
         let directory = "TestExpiredRead_\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
         let storage = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
-        let cache = Cache(policy: .fifo(threshold: 10), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .fifo(threshold: 10), storageEngine: storage, clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
@@ -358,10 +358,10 @@ struct CacheTests {
     }
 
     @Test(arguments: PolicyKind.allCases) func evictionBreaksDateTiesByKey(kind: PolicyKind) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add(["c", "a", "e", "b", "d"].map { ($0, $0) })
 
-        await cache.evictUntil(maxNbItems: 2)
+        await cache.evictUntil(maxCount: 2)
 
         let expected: [String] = switch kind {
             case .fifo,
@@ -390,7 +390,7 @@ struct CacheTests {
 
     @Test(arguments: PolicyKind.allCases) func readsPersistAccessOnlyForLRU(kind: PolicyKind) async {
         let storage = CountingStorageEngine()
-        let cache = Cache(policy: kind.policy(), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: storage, clock: clock)
         await cache.add("one", for: "first")
         await cache.add("two", for: "second")
         #expect(storage.persistCount == 2)
@@ -403,7 +403,7 @@ struct CacheTests {
     }
 
     @Test(arguments: PolicyKind.allCases) func containsReportsUnexpiredEntries(kind: PolicyKind) async {
-        let cache = Cache(policy: kind.policy(), storagePolicy: MemoryStorageEngine<String, String>(), clock: clock)
+        let cache = Cache(policy: kind.policy(), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
         await cache.add("value", for: "key")
 
         #expect(await cache.contains("key"))
@@ -415,14 +415,14 @@ struct CacheTests {
 
     @Test func containsDoesNotRecordAccess() async {
         let storage = CountingStorageEngine()
-        let cache = Cache(policy: .lru(threshold: 10), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 10), storageEngine: storage, clock: clock)
         await cache.add("one", for: "first")
         clock.advance(by: 1)
         await cache.add("two", for: "second")
         clock.advance(by: 1)
 
         #expect(await cache.contains("first"))
-        await cache.evictUntil(maxNbItems: 1)
+        await cache.evictUntil(maxCount: 1)
 
         #expect(storage.persistCount == 2)
         #expect(await cache.keys() == ["second"])
@@ -433,7 +433,7 @@ struct CacheTests {
         defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
         let cache = Cache(
             policy: .lru(threshold: 300),
-            storagePolicy: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
             clock: clock
         )
         await cache.add("value", for: "key")
@@ -442,7 +442,7 @@ struct CacheTests {
 
         let reloaded = Cache(
             policy: .lru(threshold: 300),
-            storagePolicy: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
             clock: clock
         )
         #expect(await reloaded.entry(for: "key")?.accessCount == 3)
@@ -461,14 +461,14 @@ struct CacheTests {
 
     private func makeCacheSynchronously(directory: String) -> Cache<DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>, String> {
         Cache(
-            storagePolicy: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
             clock: clock
         )
     }
 
     @Test func entryReturnsNilForMissingKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         let entry = await cache.entry(for: "nonexistent")
         #expect(entry == nil)
@@ -476,7 +476,7 @@ struct CacheTests {
 
     @Test func removeDeletesEntry() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
         await cache.add(TestItem(id: "key2", value: "value2"), for: "key2")
@@ -494,7 +494,7 @@ struct CacheTests {
 
     @Test func removeNonexistentKeyDoesNothing() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "key1", value: "value1"), for: "key1")
         await cache.remove("nonexistent")
@@ -505,7 +505,7 @@ struct CacheTests {
 
     @Test func clearRemovesAllEntries() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
         await cache.add(TestItem(id: "2", value: "second"), for: "2")
@@ -523,7 +523,7 @@ struct CacheTests {
 
     @Test func batchAddMultipleValues() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add([
             ("a", TestItem(id: "a", value: "first")),
@@ -546,12 +546,12 @@ struct CacheTests {
 
     @Test func evictUntilZeroClearsCache() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
         await cache.add(TestItem(id: "2", value: "second"), for: "2")
 
-        let remaining = await cache.evictUntil(maxNbItems: 0)
+        let remaining = await cache.evictUntil(maxCount: 0)
 
         #expect(remaining == 0)
         let isEmpty = await cache.isEmpty
@@ -560,12 +560,12 @@ struct CacheTests {
 
     @Test func evictUntilWhenUnderMaxReturnsCount() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "1", value: "first"), for: "1")
         await cache.add(TestItem(id: "2", value: "second"), for: "2")
 
-        let remaining = await cache.evictUntil(maxNbItems: 10)
+        let remaining = await cache.evictUntil(maxCount: 10)
 
         #expect(remaining == 2)
     }
@@ -574,7 +574,7 @@ struct CacheTests {
 
     @Test func addIdentifiableUsesIdAsKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)
 
         let item = TestItem(id: "myId", value: "myValue")
         await cache.add(item)
@@ -588,7 +588,7 @@ struct CacheTests {
 
     @Test func enumKeyOperationsUseTheDeclaredKeyType() async {
         let storage = MemoryStorageEngine<TestKey, TestItem>()
-        let cache = Cache(storagePolicy: storage, clock: clock)
+        let cache = Cache(storageEngine: storage, clock: clock)
 
         await cache.add([
             (.first, TestItem(id: "1", value: "first")),
@@ -615,13 +615,13 @@ struct CacheTests {
 
     @Test func enumKeyParticipatesInEviction() async {
         let storage = MemoryStorageEngine<TestKey, TestItem>()
-        let cache = Cache(policy: .fifo(threshold: 300), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .fifo(threshold: 300), storageEngine: storage, clock: clock)
 
         await cache.add(TestItem(id: "1", value: "first"), for: .first)
         clock.advance(by: 1)
         await cache.add(TestItem(id: "2", value: "second"), for: .second)
 
-        let remaining = await cache.evictUntil(maxNbItems: 1)
+        let remaining = await cache.evictUntil(maxCount: 1)
 
         #expect(remaining == 1)
         #expect(await cache[.first] == nil)
@@ -630,7 +630,7 @@ struct CacheTests {
 
     @Test func identifiableValueUsesMatchingEnumId() async {
         let storage = MemoryStorageEngine<TestKey, KeyedTestItem>()
-        let cache = Cache(storagePolicy: storage, clock: clock)
+        let cache = Cache(storageEngine: storage, clock: clock)
         let item = KeyedTestItem(id: .second, value: "value")
 
         let entry = await cache.add(item)
@@ -643,7 +643,7 @@ struct CacheTests {
 
     @Test func lifoEvictionByThresholdCorrect() async {
         let storage = MemoryStorageEngine<String, TestItem>()
-        let cache = Cache(policy: .lifo(threshold: 15.0), storagePolicy: storage, clock: clock)
+        let cache = Cache(policy: .lifo(threshold: 15.0), storageEngine: storage, clock: clock)
 
         // Add first two items
         await cache.add(TestItem(id: "1", value: "first"))
@@ -660,5 +660,57 @@ struct CacheTests {
         let lastItem = await cache["3"]
         #expect(count == 1)
         #expect(lastItem != nil)
+    }
+}
+
+/// Calls deprecated API through a protocol so the tests compile without deprecation warnings.
+private protocol DeprecatedCacheAPI {
+    func makeCache() -> Cache<MemoryStorageEngine<String, String>, String>
+    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>, String>) async -> Int
+    func isCacheable(_ type: (some Sendable).Type) -> Bool
+}
+
+private struct DeprecatedCacheAPICalls: DeprecatedCacheAPI {
+    @available(*, deprecated)
+    func makeCache() -> Cache<MemoryStorageEngine<String, String>, String> {
+        Cache(policy: .fifo(threshold: 10), storagePolicy: MemoryStorageEngine())
+    }
+
+    @available(*, deprecated)
+    func evictUntil(maxNbItems: Int, in cache: Cache<MemoryStorageEngine<String, String>, String>) async -> Int {
+        await cache.evictUntil(maxNbItems: maxNbItems)
+    }
+
+    @available(*, deprecated)
+    func isCacheable(_: (some Sendable).Type) -> Bool {
+        func requiresCacheable(_: (some CacheableDataType).Type) -> Bool {
+            true
+        }
+        return requiresCacheable(String.self)
+    }
+}
+
+struct DeprecatedCacheAPITests {
+    private let deprecated: any DeprecatedCacheAPI = DeprecatedCacheAPICalls()
+
+    @Test func storagePolicyInitializerForwardsToStorageEngine() async {
+        let cache = deprecated.makeCache()
+        await cache.add("value", for: "key")
+        #expect(await cache["key"] == "value")
+    }
+
+    @Test func evictUntilMaxNbItemsForwardsToMaxCount() async {
+        let clock = ManualClock()
+        let cache = Cache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("old", for: "old")
+        clock.advance(by: 1)
+        await cache.add("new", for: "new")
+
+        #expect(await deprecated.evictUntil(maxNbItems: 1, in: cache) == 1)
+        #expect(await cache.keys() == ["new"])
+    }
+
+    @Test func cacheableDataTypeIsSendable() {
+        #expect(deprecated.isCacheable(String.self))
     }
 }

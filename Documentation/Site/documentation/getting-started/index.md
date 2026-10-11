@@ -44,7 +44,7 @@ enum ProfileKey: String, CacheKey {
 }
 
 let storage = MemoryStorageEngine<ProfileKey, String>()
-let cache = Cache(storagePolicy: storage)
+let cache = Cache(storageEngine: storage)
 
 await cache.add("Ada", for: .current)
 let currentProfile = await cache[.current]
@@ -62,14 +62,14 @@ let storage = DiskStorageEngine(
     keyType: ProfileKey.self,
     serializer: JsonDiskStorageSerializer<Profile>()
 )
-let cache = Cache(storagePolicy: storage)
+let cache = Cache(storageEngine: storage)
 ```
 
 <a id="eviction"></a>
 
 ## Compare cache state after eviction
 
-Choose `.fifo`, `.lifo`, or `.lru` when creating the cache. Reads never return an expired entry; reading one removes it. Call `evictExpired()` to remove all old entries, or call `evictUntil(maxNbItems:)` to first remove expired entries and then enforce a maximum count.
+Choose `.fifo`, `.lifo`, or `.lru` when creating the cache. Reads never return an expired entry; reading one removes it. Call `evictExpired()` to remove all old entries, or call `evictUntil(maxCount:)` to first remove expired entries and then enforce a maximum count.
 
 SwiftStash does not run a background timer. Place the eviction call in the workflow that knows when reducing the cache makes sense.
 
@@ -85,7 +85,7 @@ SwiftStash does not run a background timer. Place the eviction call in the workf
 
 2 entries
 
-### After `evictUntil(maxNbItems: 1)`
+### After `evictUntil(maxCount: 1)`
 
 `concurrency` A tour of Swift concurrency
 

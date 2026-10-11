@@ -1,7 +1,7 @@
 import Foundation
 
 /// A cached value and the metadata used to manage it.
-public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Sendable {
+public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
 
     /// The unique key identifying the cached value.
     public private(set) var key: KeyType

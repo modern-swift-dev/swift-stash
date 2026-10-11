@@ -54,7 +54,7 @@ import SwiftStash
 let storage = MemoryStorageEngine<String, String>()
 let cache = Cache(
     policy: .lru(threshold: 5 * 60),
-    storagePolicy: storage
+    storageEngine: storage
 )
 
 await cache.add("Ada", for: "current-user")
@@ -71,7 +71,7 @@ What it does
 
 ### Explicit eviction
 
-Set a FIFO, LIFO, or LRU policy, then call `evictExpired()` or `evictUntil(maxNbItems:)`.
+Set a FIFO, LIFO, or LRU policy, then call `evictExpired()` or `evictUntil(maxCount:)`.
 
 ### Storage you choose
 
@@ -89,7 +89,7 @@ Use memory when persistence does not matter. Use disk with JSON, strings, or a c
 
 2 entries
 
-### After `evictUntil(maxNbItems: 1)`
+### After `evictUntil(maxCount: 1)`
 
 `concurrency` A tour of Swift concurrency
 

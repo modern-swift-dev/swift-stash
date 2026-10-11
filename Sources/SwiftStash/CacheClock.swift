@@ -20,7 +20,7 @@ public protocol CacheClock: Sendable {
 /// Example:
 /// ```swift
 /// let clock = ManualClock()
-/// let cache = Cache(policy: .fifo(threshold: 60), storagePolicy: storage, clock: clock)
+/// let cache = Cache(policy: .fifo(threshold: 60), storageEngine: storage, clock: clock)
 /// await cache.add("value", for: "key")
 /// clock.advance(by: 60)
 /// await cache.evictExpired()

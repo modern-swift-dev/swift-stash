@@ -10,7 +10,7 @@ import Foundation
 /// ```swift
 /// let engine = MemoryStorageEngine<MyKey, MyType>()
 /// ```
-public class MemoryStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType>: StorageEngine {
+public class MemoryStorageEngine<KeyType: CacheKey, StoredType: Sendable>: StorageEngine {
 
     /// Creates a no-op storage engine.
     public init() {}

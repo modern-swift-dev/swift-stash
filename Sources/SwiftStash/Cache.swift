@@ -1,6 +1,7 @@
 import Foundation
 
 /// A `Sendable` type that can be stored in a ``Cache``.
+@available(*, deprecated, renamed: "Sendable")
 public typealias CacheableDataType = Sendable
 
 /// An actor-isolated cache backed by a storage engine.
@@ -13,12 +14,12 @@ public typealias CacheableDataType = Sendable
 /// ```swift
 /// let cache = Cache(
 ///     policy: .lru(threshold: 300),
-///     storagePolicy: MemoryStorageEngine<String, String>()
+///     storageEngine: MemoryStorageEngine<String, String>()
 /// )
 /// await cache.add("value", for: "key")
 /// let value = await cache["key"]
 /// ```
-public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataType> where StorageEngineType.StoredType == CacheType {
+public actor Cache<StorageEngineType: StorageEngine, CacheType: Sendable> where StorageEngineType.StoredType == CacheType {
 
     /// The type used to identify entries in this cache.
     public typealias KeyType = StorageEngineType.KeyType
@@ -70,22 +71,32 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// Creates a cache and loads any entries provided by its storage engine.
     ///
     /// - Parameters:
-    ///   - policy: The policy used by ``evictExpired()`` and ``evictUntil(maxNbItems:)``. Defaults to LRU with a 300-second threshold.
-    ///   - storagePolicy: The storage engine that loads and persists cache entries.
+    ///   - policy: The policy used by ``evictExpired()`` and ``evictUntil(maxCount:)``. Defaults to LRU with a 300-second threshold.
+    ///   - storageEngine: The storage engine that loads and persists cache entries.
     ///   - clock: The clock used to timestamp entries and find expired ones. Defaults to ``NetworkTimeClock/shared``.
+    public init(
+        policy: EvictionPolicy = .lru(threshold: 300),
+        storageEngine: StorageEngineType,
+        clock: any CacheClock = NetworkTimeClock.shared
+    ) {
+        self.policy = policy
+        self.clock = clock
+        self.storageEngine = storageEngine
+        var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
+        for entry in storageEngine.load() {
+            loaded[entry.key] = entry
+        }
+        entries = loaded
+    }
+
+    /// Creates a cache and loads any entries provided by its storage engine.
+    @available(*, deprecated, renamed: "init(policy:storageEngine:clock:)")
     public init(
         policy: EvictionPolicy = .lru(threshold: 300),
         storagePolicy: StorageEngineType,
         clock: any CacheClock = NetworkTimeClock.shared
     ) {
-        self.policy = policy
-        self.clock = clock
-        storageEngine = storagePolicy
-        var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
-        for entry in storagePolicy.load() {
-            loaded[entry.key] = entry
-        }
-        entries = loaded
+        self.init(policy: policy, storageEngine: storagePolicy, clock: clock)
     }
 
     /// Returns all keys currently held by the cache.
@@ -249,12 +260,12 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
     /// those added together in one batch, are ordered by their keys' string values:
     /// FIFO and LRU remove the lowest keys first, and LIFO removes the highest keys first.
     ///
-    /// - Parameter maxNbItems: The maximum number of entries to retain.
+    /// - Parameter maxCount: The maximum number of entries to retain.
     /// - Returns: The number of entries remaining in the cache.
-    @discardableResult public func evictUntil(maxNbItems max: Int) -> Int {
+    @discardableResult public func evictUntil(maxCount: Int) -> Int {
 
         // if specified max size is 0, then clear it
-        guard max > 0 else {
+        guard maxCount > 0 else {
             clear()
             return 0
         }
@@ -263,12 +274,12 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         evictExpired()
 
         // if the number of entries is still over, when we need to delete more entries
-        guard entries.count > max else {
+        guard entries.count > maxCount else {
             return entries.count
         }
 
         // Calculate the nb entries to delete
-        let nbEntriesToDelete = entries.count - max
+        let nbEntriesToDelete = entries.count - maxCount
 
         // Evict according to the eviction policy
         let values = entries.values.sorted(by: evictsBefore).prefix(nbEntriesToDelete)
@@ -279,6 +290,12 @@ public actor Cache<StorageEngineType: StorageEngine, CacheType: CacheableDataTyp
         }
 
         return entries.count
+    }
+
+    /// Removes expired entries, then evicts entries until the cache contains at most a given number of items.
+    @available(*, deprecated, renamed: "evictUntil(maxCount:)")
+    @discardableResult public func evictUntil(maxNbItems max: Int) -> Int {
+        evictUntil(maxCount: max)
     }
 
     /// Whether the eviction policy removes one entry before another.

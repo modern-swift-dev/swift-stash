@@ -43,7 +43,7 @@ import SwiftStash
 let storage = MemoryStorageEngine<String, String>()
 let cache = Cache(
     policy: .lru(threshold: 5 * 60),
-    storagePolicy: storage
+    storageEngine: storage
 )
 
 await cache.add("Ada", for: "current-user")
@@ -52,7 +52,7 @@ if let name = await cache["current-user"] {
     print(name)
 }
 
-await cache.evictUntil(maxNbItems: 100)
+await cache.evictUntil(maxCount: 100)
 ```
 
 `Cache` is an actor, so calls from outside its isolation domain use `await`. Values stored in a cache must be `Sendable`.
@@ -66,7 +66,7 @@ enum ProfileKey: String, CacheKey {
 }
 
 let storage = MemoryStorageEngine<ProfileKey, Profile>()
-let cache = Cache(storagePolicy: storage)
+let cache = Cache(storageEngine: storage)
 
 await cache.add(profile, for: .current)
 let currentProfile = await cache[.current]
@@ -86,7 +86,7 @@ let storage = DiskStorageEngine(
     keyType: ProfileKey.self,
     serializer: JsonDiskStorageSerializer<Profile>()
 )
-let cache = Cache(storagePolicy: storage)
+let cache = Cache(storageEngine: storage)
 ```
 
 The engine creates the named subdirectory when it is initialized. Disk writes report failure by returning `false` from the storage engine; cache mutation APIs do not throw when persistence fails.
@@ -103,7 +103,7 @@ Choose a policy when creating a cache:
 - `lifo(threshold:)` removes the newest entries first when reducing by count.
 - `lru(threshold:)` removes the least recently accessed entries first.
 
-The threshold is measured in seconds. Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxNbItems:)` to remove expired entries and enforce a maximum count. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
+The threshold is measured in seconds. Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxCount:)` to remove expired entries and enforce a maximum count. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
 
 ## Time
 
@@ -123,7 +123,7 @@ Pass a `ManualClock` to test expiration and eviction without waiting for real ti
 let clock = ManualClock()
 let cache = Cache(
     policy: .fifo(threshold: 60),
-    storagePolicy: MemoryStorageEngine<String, String>(),
+    storageEngine: MemoryStorageEngine<String, String>(),
     clock: clock
 )
 
