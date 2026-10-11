@@ -227,9 +227,9 @@ struct CacheTests {
             let directoryURL = URL.swiftStashCacheDirectory.appendingPathComponent(directory)
             defer { try? FileManager.default.removeItem(at: directoryURL) }
             try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-            let storage = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+            let storage = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
                 directory: directory,
-                serializer: StringDiskStorageSerializer()
+                serializer: TextDiskStorageSerializer()
             )
             let cache = Cache(policy: .lru(threshold: 10), storageEngine: storage, clock: clock)
             await cache.add([("first", "one"), ("second", "two")])
@@ -247,9 +247,9 @@ struct CacheTests {
             clock.advance(by: 2)
             let reloaded = Cache(
                 policy: .lru(threshold: 10),
-                storageEngine: DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+                storageEngine: DiskStorageEngine<String, String, TextDiskStorageSerializer>(
                     directory: directory,
-                    serializer: StringDiskStorageSerializer()
+                    serializer: TextDiskStorageSerializer()
                 ),
                 clock: clock
             )
@@ -346,14 +346,14 @@ struct CacheTests {
     @Test func expiredReadRemovesTheEntryFromStorage() async {
         let directory = "TestExpiredRead_\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
-        let storage = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
+        let storage = DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer())
         let cache = Cache(policy: .fifo(threshold: 10), storageEngine: storage, clock: clock)
         await cache.add("value", for: "key")
         clock.advance(by: 10)
 
         #expect(await cache["key"] == nil)
 
-        let reloaded = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
+        let reloaded = DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer())
         #expect(reloaded.load().isEmpty)
     }
 
@@ -433,7 +433,7 @@ struct CacheTests {
         defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
         let cache = Cache(
             policy: .lru(threshold: 300),
-            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
             clock: clock
         )
         await cache.add("value", for: "key")
@@ -442,7 +442,7 @@ struct CacheTests {
 
         let reloaded = Cache(
             policy: .lru(threshold: 300),
-            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
             clock: clock
         )
         #expect(await reloaded.entry(for: "key")?.accessCount == 3)
@@ -451,7 +451,7 @@ struct CacheTests {
     @Test func initIsSynchronousAndLoadsStoredEntries() async {
         let directory = "TestSynchronousInit_\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
-        let storage = DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>())
+        let storage = DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer())
         storage.persist(CacheEntry(key: "key", value: "value", creation: clock.now, lastAccess: clock.now))
 
         let cache = makeCacheSynchronously(directory: directory)
@@ -459,9 +459,9 @@ struct CacheTests {
         #expect(await cache["key"] == "value")
     }
 
-    private func makeCacheSynchronously(directory: String) -> Cache<DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>, String> {
+    private func makeCacheSynchronously(directory: String) -> Cache<DiskStorageEngine<String, String, TextDiskStorageSerializer>, String> {
         Cache(
-            storageEngine: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
             clock: clock
         )
     }

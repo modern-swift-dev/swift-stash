@@ -12,12 +12,12 @@ struct DiskStorageEngineTests {
         case known
     }
 
-    private func createEngineWithDirectory(_ name: String) -> DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>> {
+    private func createEngineWithDirectory(_ name: String) -> DiskStorageEngine<String, String, TextDiskStorageSerializer> {
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return DiskStorageEngine(
             directory: name,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
     }
 
@@ -43,7 +43,7 @@ struct DiskStorageEngineTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         #expect(!FileManager.default.fileExists(atPath: directory.path))
 
-        let engine = DiskStorageEngine(directory: dirName, serializer: StringDiskStorageSerializer<NSString>())
+        let engine = DiskStorageEngine(directory: dirName, serializer: TextDiskStorageSerializer())
 
         var isDirectory: ObjCBool = false
         #expect(FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory))
@@ -191,7 +191,7 @@ struct DiskStorageEngineTests {
         let engine = DiskStorageEngine(
             directory: dirName,
             keyType: TestKey.self,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
 
         #expect(engine.persist(CacheEntry(key: .known, value: "value")))
@@ -208,14 +208,14 @@ struct DiskStorageEngineTests {
         let dirName = "TestCompatibleKey_\(UUID().uuidString)"
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let stringEngine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+        let stringEngine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
             directory: dirName,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
-        let enumEngine = DiskStorageEngine<TestKey, String, StringDiskStorageSerializer<NSString>>(
+        let enumEngine = DiskStorageEngine<TestKey, String, TextDiskStorageSerializer>(
             directory: dirName,
             keyType: TestKey.self,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
 
         #expect(stringEngine.persist(CacheEntry(key: "known", value: "string")))
@@ -232,14 +232,14 @@ struct DiskStorageEngineTests {
         let dirName = "TestUnknownEnumKey_\(UUID().uuidString)"
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let stringEngine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
+        let stringEngine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
             directory: dirName,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
-        let enumEngine = DiskStorageEngine<TestKey, String, StringDiskStorageSerializer<NSString>>(
+        let enumEngine = DiskStorageEngine<TestKey, String, TextDiskStorageSerializer>(
             directory: dirName,
             keyType: TestKey.self,
-            serializer: StringDiskStorageSerializer()
+            serializer: TextDiskStorageSerializer()
         )
 
         #expect(stringEngine.persist(CacheEntry(key: "unknown", value: "value")))
@@ -350,8 +350,8 @@ struct DiskStorageEngineTests {
             fileName: "\u{E9}".cacheEntryFileName
         )
         try writeLegacyEntry(key: "e\u{301}", value: "new", creation: 1001, lastAccess: 1001, directory: directory)
-        let engine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
-            directory: name, serializer: StringDiskStorageSerializer(), options: [.withoutOverwriting]
+        let engine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
+            directory: name, serializer: TextDiskStorageSerializer(), options: [.withoutOverwriting]
         )
 
         let entry = try #require(engine.load().first)
@@ -399,8 +399,8 @@ struct DiskStorageEngineTests {
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let engine = DiskStorageEngine<String, String, StringDiskStorageSerializer<NSString>>(
-            directory: name, serializer: StringDiskStorageSerializer(), options: [.withoutOverwriting]
+        let engine = DiskStorageEngine<String, String, TextDiskStorageSerializer>(
+            directory: name, serializer: TextDiskStorageSerializer(), options: [.withoutOverwriting]
         )
         #expect(engine.persist(CacheEntry(key: "key", value: "old")))
         #expect(!engine.persist(CacheEntry(key: "key", value: "new")))
@@ -412,7 +412,7 @@ struct DiskStorageEngineTests {
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let engine = DiskStorageEngine(directory: name, serializer: StringDiskStorageSerializer<NSString>(encoding: .ascii))
+        let engine = DiskStorageEngine(directory: name, serializer: TextDiskStorageSerializer(encoding: .ascii))
         #expect(!engine.persist(CacheEntry(key: "key", value: "🌍")))
         #expect(engine.load().isEmpty)
     }

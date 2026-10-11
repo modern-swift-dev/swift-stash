@@ -8,15 +8,16 @@ public enum StringDiskStorageSerializerError: Error, Equatable {
 
 /// A text-backed serializer for `String` values.
 ///
-/// Values are converted with the encoding supplied at initialization. Use
-/// `StringDiskStorageSerializer<NSString>` when supplying this serializer to a
-/// ``DiskStorageEngine`` that stores strings.
+/// Values are converted with the encoding supplied at initialization.
 ///
 /// Example:
 /// ```swift
-/// let serializer = StringDiskStorageSerializer<NSString>(encoding: .utf8)
+/// let engine = DiskStorageEngine(
+///     directory: "notes",
+///     serializer: TextDiskStorageSerializer(encoding: .utf8)
+/// )
 /// ```
-public class StringDiskStorageSerializer<SerializedType: NSString>: DiskStorageSerializer {
+public struct TextDiskStorageSerializer: DiskStorageSerializer, Sendable {
 
     /// The Encoding
     private let encoding: String.Encoding
@@ -24,7 +25,7 @@ public class StringDiskStorageSerializer<SerializedType: NSString>: DiskStorageS
     /// Creates a string serializer with the specified character encoding.
     ///
     /// - Parameter encoding: The encoding used to convert strings to and from data.
-    ///   The default is ``String/Encoding/utf8``.
+    ///   The default is `.utf8`.
     public init(encoding: String.Encoding = .utf8) {
         self.encoding = encoding
     }
@@ -50,5 +51,42 @@ public class StringDiskStorageSerializer<SerializedType: NSString>: DiskStorageS
     /// - Throws: This implementation does not throw.
     public func deserialize(_ data: Data) throws -> String? {
         String(data: data, encoding: encoding)
+    }
+}
+
+/// A text-backed serializer for `String` values.
+///
+/// The generic parameter is unused; use ``TextDiskStorageSerializer`` instead.
+@available(*, deprecated, message: "Use TextDiskStorageSerializer, which has no generic parameter.")
+public class StringDiskStorageSerializer<SerializedType: NSString>: DiskStorageSerializer {
+
+    /// The serializer that performs the conversions
+    private let serializer: TextDiskStorageSerializer
+
+    /// Creates a string serializer with the specified character encoding.
+    ///
+    /// - Parameter encoding: The encoding used to convert strings to and from data.
+    ///   The default is ``String/Encoding/utf8``.
+    public init(encoding: String.Encoding = .utf8) {
+        serializer = TextDiskStorageSerializer(encoding: encoding)
+    }
+
+    /// Converts a string to data using this serializer's encoding.
+    ///
+    /// - Parameter value: The string to serialize.
+    /// - Returns: The encoded data.
+    /// - Throws: ``StringDiskStorageSerializerError/unrepresentableValue(encoding:)``
+    ///   when the value cannot be represented in the configured encoding.
+    public func serialize(_ value: String) throws -> Data {
+        try serializer.serialize(value)
+    }
+
+    /// Converts encoded data to a string using this serializer's encoding.
+    ///
+    /// - Parameter data: The encoded string data to deserialize.
+    /// - Returns: The decoded string, or `nil` when `data` cannot be decoded with
+    ///   the configured encoding.
+    public func deserialize(_ data: Data) throws -> String? {
+        try serializer.deserialize(data)
     }
 }
