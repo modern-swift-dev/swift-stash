@@ -61,6 +61,9 @@ public actor Cache<StorageEngineType: StorageEngine> {
         entries.count
     }
 
+    /// The total cost of the entries currently held by the cache, or `0` when the cache has no cost limit.
+    public private(set) var totalCost = 0
+
     /// The Storage Policy
     private let storageEngine: StorageEngineType
 
@@ -72,6 +75,9 @@ public actor Cache<StorageEngineType: StorageEngine> {
 
     /// The maximum number of entries kept after each addition, if any
     private let maxCount: Int?
+
+    /// The maximum total cost kept after each addition, if any
+    private let costLimit: CostLimit<CacheType>?
 
     /// The Entries
     private var entries: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
@@ -85,21 +91,31 @@ public actor Cache<StorageEngineType: StorageEngine> {
     ///   - maxCount: The maximum number of entries to keep. After each addition, the cache calls
     ///     ``evictUntil(maxCount:)`` with this value when it holds more entries. Pass `nil`, the default,
     ///     to keep any number of entries. Entries loaded from storage aren't evicted until the next addition.
+    ///   - costLimit: The maximum total cost of the entries, and how to compute each value's cost.
+    ///     After each addition, the cache removes expired entries and then evicts entries in policy
+    ///     order until the total cost is within the limit. Pass `nil`, the default, for no limit.
+    ///     Entries loaded from storage aren't evicted until the next addition.
     public init(
         policy: EvictionPolicy = .lru(threshold: 300),
         storageEngine: StorageEngineType,
         clock: any CacheClock = NetworkTimeClock.shared,
-        maxCount: Int? = nil
+        maxCount: Int? = nil,
+        costLimit: CostLimit<CacheType>? = nil
     ) {
         self.policy = policy
         self.clock = clock
         self.maxCount = maxCount
+        self.costLimit = costLimit
         self.storageEngine = storageEngine
         var loaded: [KeyType: CacheEntry<KeyType, CacheType>] = [:]
-        for entry in storageEngine.load() {
+        var loadedCost = 0
+        for var entry in storageEngine.load() {
+            entry.cost = costLimit?.cost(of: entry.value) ?? 0
+            loadedCost += entry.cost - (loaded[entry.key]?.cost ?? 0)
             loaded[entry.key] = entry
         }
         entries = loaded
+        totalCost = loadedCost
     }
 
     /// Creates a cache and loads any entries provided by its storage engine.
@@ -205,11 +221,18 @@ public actor Cache<StorageEngineType: StorageEngine> {
         let creation = clock.now
         let expiration = lifetime.map { creation.addingTimeInterval($0) }
         for value in values {
-            let entry = CacheEntry(key: value.0, value: value.1, creation: creation, lastAccess: creation, expiration: expiration)
-            entries[entry.key] = entry
+            let entry = CacheEntry(
+                key: value.0,
+                value: value.1,
+                creation: creation,
+                lastAccess: creation,
+                expiration: expiration,
+                cost: costLimit?.cost(of: value.1) ?? 0
+            )
+            store(entry)
             storageEngine.persist(entry)
         }
-        enforceMaxCount()
+        enforceLimits()
     }
 
     /// Adds a value to the cache for a key.
@@ -234,18 +257,34 @@ public actor Cache<StorageEngineType: StorageEngine> {
             value: value,
             creation: now,
             lastAccess: now,
-            expiration: lifetime.map { now.addingTimeInterval($0) }
+            expiration: lifetime.map { now.addingTimeInterval($0) },
+            cost: costLimit?.cost(of: value) ?? 0
         )
-        entries[key] = entry
+        store(entry)
         storageEngine.persist(entry)
-        enforceMaxCount()
+        enforceLimits()
         return entry
     }
 
-    /// Evicts entries when the cache holds more than its maximum count.
-    private func enforceMaxCount() {
+    /// Inserts or replaces an entry, keeping the total cost up to date.
+    private func store(_ entry: CacheEntry<KeyType, CacheType>) {
+        totalCost += entry.cost - (entries[entry.key]?.cost ?? 0)
+        entries[entry.key] = entry
+    }
+
+    /// Evicts entries when the cache exceeds its maximum count or cost.
+    private func enforceLimits() {
         if let maxCount, entries.count > maxCount {
             evictUntil(maxCount: maxCount)
+        }
+        if let costLimit, totalCost > costLimit.maxCost {
+            evictExpired()
+            for entry in entries.values.sorted(by: evictsBefore) {
+                guard totalCost > costLimit.maxCost else {
+                    break
+                }
+                remove(entry.key)
+            }
         }
     }
 
@@ -254,6 +293,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// - Parameter key: The key of the entry to remove. A missing key has no effect.
     public func remove(_ key: KeyType) {
         if let entry = entries.removeValue(forKey: key) {
+            totalCost -= entry.cost
             storageEngine.delete(entry)
         }
     }
@@ -286,6 +326,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// Removes all entries from the cache and clears its storage engine.
     public func clear() {
         entries.removeAll()
+        totalCost = 0
         storageEngine.clear()
     }
 
@@ -332,9 +373,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
         // Evict according to the eviction policy
         let values = entries.values.sorted(by: evictsBefore).prefix(nbEntriesToDelete)
         for value in values {
-            if let entry = entries.removeValue(forKey: value.key) {
-                storageEngine.delete(entry)
-            }
+            remove(value.key)
         }
 
         return entries.count

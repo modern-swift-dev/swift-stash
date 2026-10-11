@@ -14,6 +14,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - An `accessCount` parameter on `CacheEntry.init(key:value:creation:lastAccess:)`.
 - CI coverage for Swift 6.0, tvOS, watchOS, visionOS, and the example packages.
 - Per-entry lifetimes: an `expiresAfter` parameter on the `add` methods, and `CacheEntry.expiration`. An entry expires at its own expiration date or at the policy's threshold, whichever comes first. Disk storage persists the expiration.
+- Cost limits: a `costLimit` parameter on `Cache.init` takes a maximum total cost and a function that computes each value's cost. The cache evicts entries in policy order after each addition to stay within the limit. `Cache.totalCost` and `CacheEntry.cost` report the costs.
 
 ### Changed
 

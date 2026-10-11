@@ -18,6 +18,9 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
     /// The date when the entry expires regardless of the cache's eviction policy, if any.
     public private(set) var expiration: Date?
 
+    /// The entry's cost under the cache's ``CostLimit``, or `0` when the cache has no cost limit.
+    public internal(set) var cost: Int = 0
+
     /// The value stored in the entry.
     public private(set) var value: CachedType
 
@@ -44,13 +47,15 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
     ///   - accessCount: The number of recorded accesses. The default is `0`.
     ///   - expiration: The date when the entry expires regardless of the cache's eviction policy.
     ///     The default is `nil`, meaning only the policy determines when the entry expires.
+    ///   - cost: The entry's cost under a ``CostLimit``. The default is `0`.
     public init(
         key: KeyType,
         value: CachedType,
         creation: Date,
         lastAccess: Date,
         accessCount: Int64 = 0,
-        expiration: Date? = nil
+        expiration: Date? = nil,
+        cost: Int = 0
     ) {
         self.key = key
         self.value = value
@@ -58,6 +63,7 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
         self.lastAccess = lastAccess
         self.accessCount = accessCount
         self.expiration = expiration
+        self.cost = cost
     }
 
     /// Records an access at a date.

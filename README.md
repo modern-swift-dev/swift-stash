@@ -109,7 +109,17 @@ The threshold is measured in seconds. An entry can also have its own lifetime; i
 await cache.add(token, for: "session", expiresAfter: 60)
 ```
 
-Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry, or `values()` to list them, without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxCount:)` to remove expired entries and enforce a maximum count. To enforce a maximum count automatically, pass `maxCount` when creating the cache; the cache then calls `evictUntil(maxCount:)` after each addition. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
+Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry, or `values()` to list them, without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxCount:)` to remove expired entries and enforce a maximum count. To enforce a maximum count automatically, pass `maxCount` when creating the cache; the cache then calls `evictUntil(maxCount:)` after each addition.
+
+To bound the cache by size instead, pass a `CostLimit` with a maximum total cost and a function that computes each value's cost. After each addition, the cache removes expired entries and then evicts entries in policy order until the total is within the limit:
+
+```swift
+let images = Cache(
+    policy: .lru(threshold: 24 * 60 * 60),
+    storageEngine: MemoryStorageEngine<URL, Data>(),
+    costLimit: CostLimit(maxCost: 50_000_000) { $0.count }
+)
+``` SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
 
 ## Time
 
