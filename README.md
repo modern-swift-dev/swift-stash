@@ -7,7 +7,7 @@ SwiftStash is a small, concurrency-safe cache for Swift. It provides an actor-is
 ## Requirements
 
 - Swift 6.0+
-- macOS 15+
+- macOS 14+
 - iOS and tvOS 17+
 - watchOS 10+
 - visionOS 1+

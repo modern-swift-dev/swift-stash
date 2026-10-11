@@ -101,7 +101,7 @@ Platforms and source
 
 SwiftStash is MIT-licensed. Its source, issues, releases, and package metadata are public in the modern-swift-dev GitHub organization.
 
-- macOS 15+
+- macOS 14+
 
 - iOS 17+
 

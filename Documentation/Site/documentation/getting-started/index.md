@@ -15,7 +15,7 @@ Start with memory storage. Move to disk when an entry needs to survive beyond th
 
 - Swift 6.0 or later
 
-- macOS 15, iOS 17, tvOS 17, watchOS 10, or visionOS 1 or later
+- macOS 14, iOS 17, tvOS 17, watchOS 10, or visionOS 1 or later
 
 ## Install {{version}}
 

@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "SwiftStash",
     platforms: [
-        .macOS(.v15),
+        .macOS(.v14),
         .iOS(.v17),
         .tvOS(.v17),
         .watchOS(.v10),

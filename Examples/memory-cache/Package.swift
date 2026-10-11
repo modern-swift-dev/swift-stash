@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "MemoryCacheExample",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "../..")
     ],
