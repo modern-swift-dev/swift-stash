@@ -26,6 +26,10 @@ For a direct SwiftPM test run, use:
 swift test
 ```
 
+## Changelog
+
+Describe user-visible changes in the Unreleased section of [CHANGELOG.md](CHANGELOG.md). When publishing a release, move those entries under a heading for the new version.
+
 ## Publishing the documentation site
 
 Guides and examples live in [Documentation/Site](Documentation/Site). The [central documentation repository](https://github.com/modern-swift-dev/docs) owns the shared Astro theme, builds the guides and DocC API reference, and publishes them daily. For local builds and previews, follow the [docs README](https://github.com/modern-swift-dev/docs/blob/main/README.md).
