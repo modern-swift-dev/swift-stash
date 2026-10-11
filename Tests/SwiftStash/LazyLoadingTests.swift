@@ -6,13 +6,19 @@ import Testing
 private final class CountingSerializer: DiskStorageSerializer, @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var serializations = 0
 
     var deserializeCount: Int {
         lock.withLock { count }
     }
 
+    var serializeCount: Int {
+        lock.withLock { serializations }
+    }
+
     func serialize(_ value: String) throws -> Data {
-        Data(value.utf8)
+        lock.withLock { serializations += 1 }
+        return Data(value.utf8)
     }
 
     func deserialize(_ data: Data) throws -> String? {
@@ -180,8 +186,83 @@ struct LazyLoadingTests {
 
     @Test func enginesLoadEagerlyByDefault() {
         let engine = MemoryStorageEngine<String, String>()
+        let date = Date(timeIntervalSince1970: 1000)
 
         #expect(engine.loadMetadata() == nil)
         #expect(engine.loadValue(for: "key") == nil)
+        #expect(!engine.persistMetadata(CacheEntryMetadata(key: "key", creation: date, lastAccess: date)))
+    }
+
+    // MARK: - Metadata Updates
+
+    private func fileURL(for key: String, in directory: String) -> URL {
+        URL.swiftStashCacheDirectory.appendingPathComponent(directory).appendingPathComponent(key.cacheEntryFileName)
+    }
+
+    @Test func lruReadsUpdateMetadataWithoutRewritingValues() async throws {
+        let directory = await storeEntries(["a": "one"])
+        let sizeBefore = try Data(contentsOf: fileURL(for: "a", in: directory)).count
+        let serializer = CountingSerializer()
+        let cache = reopen(directory, serializer: serializer, policy: .lru(threshold: 300))
+
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+
+        #expect(serializer.serializeCount == 0)
+        #expect(try Data(contentsOf: fileURL(for: "a", in: directory)).count == sizeBefore)
+        let metadata = try #require(DiskStorageEngine(directory: directory, serializer: CountingSerializer()).loadMetadata()?.first)
+        #expect(metadata.accessCount == 2)
+        #expect(metadata.lastAccess == clock.now)
+    }
+
+    @Test func headersWithoutRoomAreRewrittenAroundTheValue() async throws {
+        let directory = await storeEntries(["a": "one"])
+        let url = fileURL(for: "a", in: directory)
+        // Remove the header padding so the updated header can't be written in place.
+        let file = try Data(contentsOf: url)
+        let regionLength = file[4 ..< 8].reduce(0) { $0 << 8 | Int($1) }
+        var header = Data(file[8 ..< 8 + regionLength])
+        while header.last == UInt8(ascii: " ") {
+            header.removeLast()
+        }
+        var compact = Data("SSE2".utf8)
+        withUnsafeBytes(of: UInt32(header.count).bigEndian) { compact.append(contentsOf: $0) }
+        try (compact + header + file[(8 + regionLength)...]).write(to: url)
+        let serializer = CountingSerializer()
+        let cache = reopen(directory, serializer: serializer, policy: .lru(threshold: 300))
+
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+
+        #expect(serializer.serializeCount == 0)
+        let reopened = DiskStorageEngine(directory: directory, serializer: CountingSerializer())
+        #expect(reopened.loadMetadata()?.first?.accessCount == 1)
+        #expect(reopened.loadValue(for: "a") == "one")
+    }
+
+    @Test func persistMetadataFailsWithoutAnEntryFile() {
+        let engine = DiskStorageEngine(directory: directories.make("TestMissingMetadata"), serializer: CountingSerializer())
+        let date = Date(timeIntervalSince1970: 1000)
+
+        #expect(!engine.persistMetadata(CacheEntryMetadata(key: "missing", creation: date, lastAccess: date)))
+    }
+
+    @Test func persistMetadataRespectsWithoutOverwriting() {
+        let engine = DiskStorageEngine<String, String, CountingSerializer>(
+            directory: directories.make("TestMetadataWithoutOverwriting"),
+            serializer: CountingSerializer(),
+            options: [.withoutOverwriting]
+        )
+        let date = Date(timeIntervalSince1970: 1000)
+        let entry = CacheEntry(key: "key", value: "value", creation: date, lastAccess: date)
+        #expect(engine.persist(entry))
+
+        var metadata = entry.metadata
+        metadata.updateLastAccess(at: date.addingTimeInterval(1))
+
+        #expect(!engine.persistMetadata(metadata))
+        #expect(engine.loadMetadata()?.first?.lastAccess == date)
     }
 }

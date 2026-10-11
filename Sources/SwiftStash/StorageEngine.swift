@@ -58,6 +58,16 @@ public protocol StorageEngine {
     ///
     /// - Parameter key: The key of the entry to remove.
     func delete(forKey key: KeyType)
+
+    /// Persists an entry's updated metadata, such as its last-access date, without rewriting its value.
+    ///
+    /// With the LRU policy, a cache calls this method after each read. When it returns `false`,
+    /// the cache persists the whole entry with ``persist(_:)`` instead.
+    ///
+    /// - Parameter metadata: The updated metadata of a stored entry.
+    /// - Returns: `true` when the metadata was persisted; `false` when the engine can't persist
+    ///   metadata alone or the write failed. The default implementation returns `false`.
+    @discardableResult func persistMetadata(_ metadata: CacheEntryMetadata<KeyType>) -> Bool
 }
 
 public extension StorageEngine {
@@ -74,4 +84,9 @@ public extension StorageEngine {
 
     /// Does nothing.
     func delete(forKey _: KeyType) {}
+
+    /// Returns `false`, so caches persist whole entries.
+    func persistMetadata(_: CacheEntryMetadata<KeyType>) -> Bool {
+        false
+    }
 }

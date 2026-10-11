@@ -15,6 +15,9 @@ private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 /// The bytes that start every entry file in the current format.
 private let entryFileSignature = Data("SSE2".utf8)
 
+/// The spaces reserved after each header so updated metadata can be written in place.
+private let entryHeaderPadding = 64
+
 /// A file-system-backed implementation of ``StorageEngine``.
 ///
 /// The engine serializes each entry with `Serializer` and writes it as a separate
@@ -214,14 +217,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         do {
             let stringKey = entry.key.stringValue
             let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
-            let header = EntryHeader(
-                key: stringKey,
-                creation: entry.creation,
-                lastAccess: entry.lastAccess,
-                accessCount: entry.accessCount,
-                expiration: entry.expiration,
-                cost: entry.cost
-            )
+            let header = EntryHeader(metadata: entry.metadata)
             let diskData = try encodeFile(header: header, value: serializer.serialize(entry.value))
             try diskData.write(to: url, options: writingOptions)
             currentFiles[entry.key] = url
@@ -231,6 +227,61 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             log(error)
             return false
         }
+    }
+
+    /// Writes an entry's updated metadata over the header of its file, leaving the value untouched.
+    ///
+    /// When the new header doesn't fit in the space reserved for it, the file is rewritten
+    /// around its existing value bytes, without serializing the value again. In-place updates
+    /// aren't atomic; a file damaged by an interrupted update is removed when it's next loaded.
+    ///
+    /// - Parameter metadata: The updated metadata of a stored entry.
+    /// - Returns: `true` when the metadata was written; `false` when the entry's file is missing or
+    ///   can't be updated, or the writing options include `withoutOverwriting`.
+    @discardableResult public func persistMetadata(_ metadata: CacheEntryMetadata<KeyType>) -> Bool {
+        if !hasLoaded {
+            _ = scan()
+        }
+        guard !writingOptions.contains(.withoutOverwriting) else {
+            return false
+        }
+        let header = EntryHeader(metadata: metadata)
+        let url = directory.appendingPathComponent(metadata.key.stringValue.cacheEntryFileName)
+        let currentURL = currentFiles[metadata.key] ?? url
+        do {
+            if try overwriteHeader(of: currentURL, with: header) {
+                return true
+            }
+            let file = try decodeFile(Data(contentsOf: currentURL))
+            try encodeFile(header: header, value: file.value).write(to: url, options: writingOptions)
+            currentFiles[metadata.key] = url
+            removeLegacyFiles(for: metadata.key, keeping: url)
+            return true
+        } catch {
+            log(error)
+            return false
+        }
+    }
+
+    /// Writes a header over the header region of a current-format file.
+    ///
+    /// - Returns: `false` when the file isn't in the current format or the header doesn't fit.
+    private func overwriteHeader(of url: URL, with header: EntryHeader) throws -> Bool {
+        let handle = try FileHandle(forUpdating: url)
+        defer { try? handle.close() }
+        let prefixLength = entryFileSignature.count + MemoryLayout<UInt32>.size
+        let prefix = try handle.read(upToCount: prefixLength) ?? Data()
+        guard prefix.count == prefixLength, prefix.starts(with: entryFileSignature) else {
+            return false
+        }
+        let regionLength = prefix.dropFirst(entryFileSignature.count).reduce(0) { $0 << 8 | Int($1) }
+        let headerData = try encoder.encode(header)
+        guard headerData.count <= regionLength else {
+            return false
+        }
+        try handle.seek(toOffset: UInt64(prefixLength))
+        try handle.write(contentsOf: headerData + Data(repeating: UInt8(ascii: " "), count: regionLength - headerData.count))
+        return true
     }
 
     /// Removes every cache-entry file in the storage directory.
@@ -264,13 +315,15 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         entryFiles[key] = remaining
     }
 
-    /// Encodes an entry file: the signature, the header length as a big-endian `UInt32`,
-    /// the JSON header, then the serialized value.
+    /// Encodes an entry file: the signature, the header region's length as a big-endian `UInt32`,
+    /// the header region (the JSON header followed by spaces reserved for metadata updates),
+    /// then the serialized value.
     private func encodeFile(header: EntryHeader, value: Data) throws -> Data {
         let headerData = try encoder.encode(header)
         var data = entryFileSignature
-        withUnsafeBytes(of: UInt32(headerData.count).bigEndian) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: UInt32(headerData.count + entryHeaderPadding).bigEndian) { data.append(contentsOf: $0) }
         data.append(headerData)
+        data.append(Data(repeating: UInt8(ascii: " "), count: entryHeaderPadding))
         data.append(value)
         return data
     }
@@ -398,6 +451,26 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
         /// Absent when the entry was stored by a cache without a cost limit
         var cost: Int?
+
+        init(key: String, creation: Date, lastAccess: Date, accessCount: Int64, expiration: Date?, cost: Int?) {
+            self.key = key
+            self.creation = creation
+            self.lastAccess = lastAccess
+            self.accessCount = accessCount
+            self.expiration = expiration
+            self.cost = cost
+        }
+
+        init(metadata: CacheEntryMetadata<KeyType>) {
+            self.init(
+                key: metadata.key.stringValue,
+                creation: metadata.creation,
+                lastAccess: metadata.lastAccess,
+                accessCount: metadata.accessCount,
+                expiration: metadata.expiration,
+                cost: metadata.cost
+            )
+        }
 
         func metadata(for key: KeyType) -> CacheEntryMetadata<KeyType> {
             CacheEntryMetadata(

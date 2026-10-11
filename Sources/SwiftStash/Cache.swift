@@ -240,7 +240,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
         metadata.updateLastAccess(at: now)
         slots[key]?.metadata = metadata
         let entry = CacheEntry(metadata: metadata, value: value)
-        if case .lru = policy {
+        if case .lru = policy, !storageEngine.persistMetadata(metadata) {
             storageEngine.persist(entry)
         }
         return entry
@@ -381,7 +381,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// Accesses the value associated with a key.
     ///
     /// Reading an existing value updates its last-access date. With the LRU policy, the updated
-    /// entry is also persisted, so the access survives a reload.
+    /// metadata is also persisted, so the access survives a reload.
     /// Reading an expired value removes its entry and returns `nil`.
     ///
     /// The setter is deprecated because code outside the cache's actor can't assign through it.
