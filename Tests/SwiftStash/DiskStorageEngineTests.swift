@@ -120,6 +120,14 @@ extension ClockDependentTests {
             #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["notes.txt"])
         }
 
+        @Test func cacheDirectoryOwnerPrefersBundleIdentifier() {
+            #expect(URL.cacheDirectoryOwner(bundleIdentifier: "com.example.app", processName: "tool") == "com.example.app")
+        }
+
+        @Test func cacheDirectoryOwnerFallsBackToProcessName() {
+            #expect(URL.cacheDirectoryOwner(bundleIdentifier: nil, processName: "tool") == "tool")
+        }
+
         @Test func loadHandlesCorruptedFiles() throws {
             MonotonicClock.shared.reset(year: 2025, month: 5, day: 4, hour: 13, minute: 15, second: 19)
             let dirName = "TestLoadCorrupted_\(UUID().uuidString)"

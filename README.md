@@ -78,7 +78,7 @@ let currentProfile = await cache[.current]
 
 `MemoryStorageEngine` gives the cache no persistent backing. Values remain in the `Cache` actor until they are removed or the cache is released.
 
-`DiskStorageEngine` stores each entry in the app's caches directory. SwiftStash includes serializers for `Codable` values and strings:
+`DiskStorageEngine` stores each entry in the app's caches directory, in a folder named after the bundle identifier. Processes without a bundle identifier, such as command-line tools, use their process name instead. SwiftStash includes serializers for `Codable` values and strings:
 
 ```swift
 let storage = DiskStorageEngine(

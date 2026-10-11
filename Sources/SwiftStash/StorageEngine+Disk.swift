@@ -16,7 +16,8 @@ private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 ///
 /// The engine serializes each entry with `Serializer` and writes it as a separate
 /// file in a named directory below the app cache directory. The engine creates the
-/// named directory when it is initialized.
+/// named directory when it is initialized. Apps store entries under their bundle
+/// identifier; processes without one, such as command-line tools, use their process name.
 ///
 /// Example:
 /// ```swift
@@ -270,17 +271,26 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 }
 
 extension URL {
+    /// The root directory for disk storage, named after the bundle identifier or,
+    /// for processes without one such as command-line tools, the process name.
     static var swiftStashCacheDirectory: URL {
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "app-cache"
+        let owner = cacheDirectoryOwner(
+            bundleIdentifier: Bundle.main.bundleIdentifier,
+            processName: ProcessInfo.processInfo.processName
+        )
         #if os(Linux)
             let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
                 ?? FileManager.default.temporaryDirectory
         #else
             let baseURL = URL.cachesDirectory
         #endif
-        let url = baseURL.appendingPathComponent("\(bundleIdentifier)-cache")
+        let url = baseURL.appendingPathComponent("\(owner)-cache")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    static func cacheDirectoryOwner(bundleIdentifier: String?, processName: String) -> String {
+        bundleIdentifier ?? processName
     }
 }
 
