@@ -16,9 +16,6 @@ VISIONOS_DESTINATION ?= platform=visionOS Simulator,name=Apple Vision Pro,OS=lat
 setup:
 
 	brew bundle install
-	brew upgrade
-	brew cleanup
-	brew autoremove
 	mint bootstrap
 	lefthook install
 
