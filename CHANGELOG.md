@@ -13,6 +13,7 @@ All notable changes to SwiftStash are documented in this file. The format is bas
 - `TextDiskStorageSerializer`, a non-generic replacement for `StringDiskStorageSerializer`.
 - An `accessCount` parameter on `CacheEntry.init(key:value:creation:lastAccess:)`.
 - CI coverage for Swift 6.0, tvOS, watchOS, visionOS, and the example packages.
+- Per-entry lifetimes: an `expiresAfter` parameter on the `add` methods, and `CacheEntry.expiration`. An entry expires at its own expiration date or at the policy's threshold, whichever comes first. Disk storage persists the expiration.
 
 ### Changed
 

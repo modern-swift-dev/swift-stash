@@ -148,7 +148,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                         value: value,
                         creation: entry.creation,
                         lastAccess: entry.lastAccess,
-                        accessCount: entry.accessCount ?? 0
+                        accessCount: entry.accessCount ?? 0,
+                        expiration: entry.expiration
                     )
                     entryFiles[key, default: []].insert(fileURL)
                     if let previous = entries[key],
@@ -199,7 +200,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
     /// Serializes and writes an entry to the storage directory.
     ///
-    /// The entry's key, creation date, last-access date, access count, and serialized value are written.
+    /// The entry's key, creation date, last-access date, access count, expiration date, and serialized value are written.
     /// Writes use the configured options; the default is atomic replacement.
     ///
     /// - Parameter entry: The entry to serialize and persist.
@@ -217,6 +218,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                 creation: entry.creation,
                 lastAccess: entry.lastAccess,
                 accessCount: entry.accessCount,
+                expiration: entry.expiration,
                 value: data
             )
             let diskData = try encoder.encode(diskEntry)
@@ -278,6 +280,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
         /// The number of recorded accesses, absent from entries written by older releases
         var accessCount: Int64?
+
+        /// The date when the entry expires regardless of the eviction policy, if any
+        var expiration: Date?
 
         /// The Data
         var value: Data

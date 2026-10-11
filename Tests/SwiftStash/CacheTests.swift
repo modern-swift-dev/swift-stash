@@ -539,6 +539,88 @@ struct CacheTests {
         #expect(await cache.isEmpty)
     }
 
+    // MARK: - Per-Entry Expiration
+
+    @Test(arguments: [EvictionPolicy.fifo(threshold: 300), .lifo(threshold: 300), .lru(threshold: 300)])
+    func entryExpiresAfterItsOwnLifetime(policy: EvictionPolicy) async {
+        let cache = Cache(policy: policy, storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let entry = await cache.add("value", for: "key", expiresAfter: 10)
+        #expect(entry.expiration == clock.now.addingTimeInterval(10))
+
+        clock.advance(by: 9)
+        #expect(await cache["key"] == "value")
+        #expect(await cache.contains("key"))
+
+        clock.advance(by: 1)
+        #expect(await !cache.contains("key"))
+        #expect(await cache["key"] == nil)
+        #expect(await cache.isEmpty)
+    }
+
+    @Test func policyThresholdStillAppliesToEntriesWithLongerLifetimes() async {
+        let cache = Cache(policy: .fifo(threshold: 10), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key", expiresAfter: 300)
+        clock.advance(by: 10)
+
+        #expect(await cache["key"] == nil)
+    }
+
+    @Test func readsDoNotExtendAnEntrysLifetime() async {
+        let cache = Cache(policy: .lru(threshold: 300), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        await cache.add("value", for: "key", expiresAfter: 10)
+        for _ in 0 ..< 3 {
+            clock.advance(by: 3)
+            #expect(await cache["key"] == "value")
+        }
+
+        clock.advance(by: 1)
+
+        #expect(await cache["key"] == nil)
+    }
+
+    @Test func entriesWithoutLifetimeFollowOnlyThePolicy() async {
+        let cache = Cache(policy: .fifo(threshold: 300), storageEngine: MemoryStorageEngine<String, String>(), clock: clock)
+        let entry = await cache.add("value", for: "key")
+        clock.advance(by: 299)
+
+        #expect(entry.expiration == nil)
+        #expect(await cache["key"] == "value")
+    }
+
+    @Test func batchAndIdentifiableAddsAcceptALifetime() async {
+        let cache = Cache(policy: .fifo(threshold: 300), storageEngine: MemoryStorageEngine<String, TestItem>(), clock: clock)
+        await cache.add([("a", TestItem(id: "a", value: "a")), ("b", TestItem(id: "b", value: "b"))], expiresAfter: 10)
+        await cache.add(TestItem(id: "c", value: "c"), expiresAfter: 20)
+        await cache.add(TestItem(id: "d", value: "d"))
+        clock.advance(by: 10)
+
+        await cache.evictExpired()
+
+        #expect(await cache.keys().sorted() == ["c", "d"])
+        clock.advance(by: 10)
+        await cache.evictExpired()
+        #expect(await cache.keys() == ["d"])
+    }
+
+    @Test func entryExpirationSurvivesReload() async {
+        let directory = directories.make("TestExpirationReload")
+        let cache = Cache(
+            policy: .fifo(threshold: 300),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
+            clock: clock
+        )
+        await cache.add("value", for: "key", expiresAfter: 10)
+
+        let reloaded = Cache(
+            policy: .fifo(threshold: 300),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: TextDiskStorageSerializer()),
+            clock: clock
+        )
+        #expect(await reloaded["key"] == "value")
+        clock.advance(by: 10)
+        #expect(await reloaded["key"] == nil)
+    }
+
     @Test func entryReturnsNilForMissingKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
         let cache = Cache(policy: .lru(threshold: 300), storageEngine: storage, clock: clock)

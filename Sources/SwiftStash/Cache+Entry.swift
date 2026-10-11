@@ -15,6 +15,9 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
     /// The number of recorded accesses to this entry.
     public private(set) var accessCount: Int64 = 0
 
+    /// The date when the entry expires regardless of the cache's eviction policy, if any.
+    public private(set) var expiration: Date?
+
     /// The value stored in the entry.
     public private(set) var value: CachedType
 
@@ -39,12 +42,22 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: Sendable>: Sendable {
     ///   - creation: The date when the entry was originally created.
     ///   - lastAccess: The date when the entry was most recently accessed.
     ///   - accessCount: The number of recorded accesses. The default is `0`.
-    public init(key: KeyType, value: CachedType, creation: Date, lastAccess: Date, accessCount: Int64 = 0) {
+    ///   - expiration: The date when the entry expires regardless of the cache's eviction policy.
+    ///     The default is `nil`, meaning only the policy determines when the entry expires.
+    public init(
+        key: KeyType,
+        value: CachedType,
+        creation: Date,
+        lastAccess: Date,
+        accessCount: Int64 = 0,
+        expiration: Date? = nil
+    ) {
         self.key = key
         self.value = value
         self.creation = creation
         self.lastAccess = lastAccess
         self.accessCount = accessCount
+        self.expiration = expiration
     }
 
     /// Records an access at a date.

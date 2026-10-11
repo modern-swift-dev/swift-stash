@@ -179,9 +179,12 @@ public actor Cache<StorageEngineType: StorageEngine> {
         return entry
     }
 
-    /// Whether an entry's age meets or exceeds the eviction policy's threshold.
+    /// Whether an entry has reached its own expiration date or the eviction policy's threshold.
     private func isExpired(_ entry: CacheEntry<KeyType, CacheType>, at now: Date) -> Bool {
-        switch policy {
+        if let expiration = entry.expiration, expiration <= now {
+            return true
+        }
+        return switch policy {
             case let .fifo(threshold),
                  let .lifo(threshold):
                 entry.creation <= Date(timeInterval: -threshold, since: now)
@@ -194,11 +197,15 @@ public actor Cache<StorageEngineType: StorageEngine> {
     ///
     /// All entries in the batch receive the same creation and last-access time.
     ///
-    /// - Parameter values: Key-value pairs to add. An existing entry with the same key is replaced.
-    public func add(_ values: [(KeyType, CacheType)]) {
+    /// - Parameters:
+    ///   - values: Key-value pairs to add. An existing entry with the same key is replaced.
+    ///   - lifetime: The number of seconds after which the entries expire, even if the eviction
+    ///     policy's threshold hasn't been reached. Pass `nil`, the default, to rely on the policy alone.
+    public func add(_ values: [(KeyType, CacheType)], expiresAfter lifetime: TimeInterval? = nil) {
         let creation = clock.now
+        let expiration = lifetime.map { creation.addingTimeInterval($0) }
         for value in values {
-            let entry = CacheEntry(key: value.0, value: value.1, creation: creation, lastAccess: creation)
+            let entry = CacheEntry(key: value.0, value: value.1, creation: creation, lastAccess: creation, expiration: expiration)
             entries[entry.key] = entry
             storageEngine.persist(entry)
         }
@@ -212,11 +219,23 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// - Parameters:
     ///   - value: The value to cache.
     ///   - key: The key used to retrieve the value.
+    ///   - lifetime: The number of seconds after which the entry expires, even if the eviction
+    ///     policy's threshold hasn't been reached. Pass `nil`, the default, to rely on the policy alone.
     /// - Returns: The cache entry created for the value. With a maximum count and the LIFO policy,
     ///   the new entry may be evicted immediately, since LIFO removes the newest entries first.
-    @discardableResult public func add(_ value: CacheType, for key: KeyType) -> CacheEntry<KeyType, CacheType> {
+    @discardableResult public func add(
+        _ value: CacheType,
+        for key: KeyType,
+        expiresAfter lifetime: TimeInterval? = nil
+    ) -> CacheEntry<KeyType, CacheType> {
         let now = clock.now
-        let entry = CacheEntry(key: key, value: value, creation: now, lastAccess: now)
+        let entry = CacheEntry(
+            key: key,
+            value: value,
+            creation: now,
+            lastAccess: now,
+            expiration: lifetime.map { now.addingTimeInterval($0) }
+        )
         entries[key] = entry
         storageEngine.persist(entry)
         enforceMaxCount()
@@ -246,7 +265,7 @@ public actor Cache<StorageEngineType: StorageEngine> {
     /// Reading an expired value removes its entry and returns `nil`.
     ///
     /// The setter is deprecated because code outside the cache's actor can't assign through it.
-    /// Use ``add(_:for:)`` and ``remove(_:)`` instead.
+    /// Use ``add(_:for:expiresAfter:)`` and ``remove(_:)`` instead.
     ///
     /// - Parameter key: The key of the entry to access.
     /// - Returns: The cached value, or `nil` if the key is not present.
@@ -270,7 +289,8 @@ public actor Cache<StorageEngineType: StorageEngine> {
         storageEngine.clear()
     }
 
-    /// Removes entries whose age meets or exceeds the eviction policy's threshold.
+    /// Removes entries that have reached their expiration date or whose age meets or exceeds
+    /// the eviction policy's threshold.
     ///
     /// FIFO and LIFO policies compare the creation date; LRU compares the last-access date.
     public func evictExpired() {
@@ -347,9 +367,12 @@ public actor Cache<StorageEngineType: StorageEngine> {
 public extension Cache where CacheType: Identifiable, CacheType.ID == KeyType {
     /// Adds an identifiable value using its identifier as the cache key.
     ///
-    /// - Parameter value: The value to cache.
+    /// - Parameters:
+    ///   - value: The value to cache.
+    ///   - lifetime: The number of seconds after which the entry expires, even if the eviction
+    ///     policy's threshold hasn't been reached. Pass `nil`, the default, to rely on the policy alone.
     /// - Returns: The cache entry created for the value.
-    @discardableResult func add(_ value: CacheType) -> CacheEntry<KeyType, CacheType> {
-        add(value, for: value.id)
+    @discardableResult func add(_ value: CacheType, expiresAfter lifetime: TimeInterval? = nil) -> CacheEntry<KeyType, CacheType> {
+        add(value, for: value.id, expiresAfter: lifetime)
     }
 }

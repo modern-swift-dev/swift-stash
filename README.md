@@ -103,7 +103,13 @@ Choose a policy when creating a cache:
 - `lifo(threshold:)` removes the newest entries first when reducing by count.
 - `lru(threshold:)` removes the least recently accessed entries first.
 
-The threshold is measured in seconds. Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry, or `values()` to list them, without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxCount:)` to remove expired entries and enforce a maximum count. To enforce a maximum count automatically, pass `maxCount` when creating the cache; the cache then calls `evictUntil(maxCount:)` after each addition. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
+The threshold is measured in seconds. An entry can also have its own lifetime; it then expires at the end of that lifetime or at the policy's threshold, whichever comes first:
+
+```swift
+await cache.add(token, for: "session", expiresAfter: 60)
+```
+
+Reads never return an expired entry: reading one removes it and returns `nil`. With `lru`, every read is also persisted so access times survive a reload; the other policies don't write on reads. Use `contains(_:)` to check for an entry, or `values()` to list them, without counting as an access. Call `evictExpired()` to remove all expired entries, or `evictUntil(maxCount:)` to remove expired entries and enforce a maximum count. To enforce a maximum count automatically, pass `maxCount` when creating the cache; the cache then calls `evictUntil(maxCount:)` after each addition. SwiftStash does not start a background timer, so `count` and `keys()` include expired entries until they're read or evicted.
 
 ## Time
 

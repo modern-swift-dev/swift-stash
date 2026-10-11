@@ -368,6 +368,7 @@ struct DiskStorageEngineTests {
         #expect(entry.creation == Date(timeIntervalSince1970: 1000))
         #expect(entry.lastAccess == Date(timeIntervalSince1970: 1001))
         #expect(entry.accessCount == 0)
+        #expect(entry.expiration == nil)
     }
 
     @Test func fractionalTimestampsSurviveReload() async throws {
