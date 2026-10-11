@@ -428,6 +428,26 @@ struct CacheTests {
         #expect(await cache.keys() == ["second"])
     }
 
+    @Test func lruAccessCountSurvivesReload() async {
+        let directory = "TestAccessCountReload_\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(at: URL.swiftStashCacheDirectory.appendingPathComponent(directory)) }
+        let cache = await Cache(
+            policy: .lru(threshold: 300),
+            storagePolicy: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            clock: clock
+        )
+        await cache.add("value", for: "key")
+        _ = await cache["key"]
+        _ = await cache["key"]
+
+        let reloaded = await Cache(
+            policy: .lru(threshold: 300),
+            storagePolicy: DiskStorageEngine(directory: directory, serializer: StringDiskStorageSerializer<NSString>()),
+            clock: clock
+        )
+        #expect(await reloaded.entry(for: "key")?.accessCount == 3)
+    }
+
     @Test func entryReturnsNilForMissingKey() async {
         let storage = MemoryStorageEngine<String, TestItem>()
         let cache = await Cache(policy: .lru(threshold: 300), storagePolicy: storage, clock: clock)

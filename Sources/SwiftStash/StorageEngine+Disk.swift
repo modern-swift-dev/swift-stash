@@ -143,7 +143,13 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
                 let entry = try decoder.decode(DiskEntry.self, from: data)
                 if let key = KeyType(stringValue: entry.key),
                    let value = try serializer.deserialize(entry.value) {
-                    let cacheEntry = CacheEntry<KeyType, StoredType>(key: key, value: value, creation: entry.creation, lastAccess: entry.lastAccess)
+                    let cacheEntry = CacheEntry<KeyType, StoredType>(
+                        key: key,
+                        value: value,
+                        creation: entry.creation,
+                        lastAccess: entry.lastAccess,
+                        accessCount: entry.accessCount ?? 0
+                    )
                     entryFiles[key, default: []].insert(fileURL)
                     if let previous = entries[key],
                        previous.entry.creation > cacheEntry.creation ||
@@ -193,7 +199,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
     /// Serializes and writes an entry to the storage directory.
     ///
-    /// The entry's key, creation date, last-access date, and serialized value are written.
+    /// The entry's key, creation date, last-access date, access count, and serialized value are written.
     /// Writes use the configured options; the default is atomic replacement.
     ///
     /// - Parameter entry: The entry to serialize and persist.
@@ -206,7 +212,13 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
             let stringKey = entry.key.stringValue
             let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
             let data = try serializer.serialize(entry.value)
-            let diskEntry = DiskEntry(key: stringKey, creation: entry.creation, lastAccess: entry.lastAccess, value: data)
+            let diskEntry = DiskEntry(
+                key: stringKey,
+                creation: entry.creation,
+                lastAccess: entry.lastAccess,
+                accessCount: entry.accessCount,
+                value: data
+            )
             let diskData = try encoder.encode(diskEntry)
             try diskData.write(to: url, options: writingOptions)
             removeLegacyFiles(for: entry.key, keeping: url)
@@ -263,6 +275,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: CacheableDataType,
 
         /// The Last accesss of the entry
         var lastAccess: Date
+
+        /// The number of recorded accesses, absent from entries written by older releases
+        var accessCount: Int64?
 
         /// The Data
         var value: Data

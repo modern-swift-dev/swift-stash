@@ -66,6 +66,17 @@ struct DiskStorageEngineTests {
         engine.clear()
     }
 
+    @Test func persistAndLoadPreserveAccessCount() {
+        let dirName = "TestAccessCount_\(UUID().uuidString)"
+        let engine = createEngineWithDirectory(dirName)
+        let date = Date(timeIntervalSince1970: 1000)
+
+        #expect(engine.persist(CacheEntry(key: "key", value: "value", creation: date, lastAccess: date, accessCount: 3)))
+
+        #expect(createEngineWithDirectory(dirName).load().first?.accessCount == 3)
+        engine.clear()
+    }
+
     @Test func deleteRemovesEntry() {
         let dirName = "TestDelete_\(UUID().uuidString)"
         let engine = createEngineWithDirectory(dirName)
@@ -362,6 +373,7 @@ struct DiskStorageEngineTests {
         #expect(entry.value == "value")
         #expect(entry.creation == Date(timeIntervalSince1970: 1000))
         #expect(entry.lastAccess == Date(timeIntervalSince1970: 1001))
+        #expect(entry.accessCount == 0)
     }
 
     @Test func fractionalTimestampsSurviveReload() async throws {

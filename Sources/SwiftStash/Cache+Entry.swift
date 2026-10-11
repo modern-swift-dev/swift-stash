@@ -29,21 +29,22 @@ public struct CacheEntry<KeyType: CacheKey, CachedType: CacheableDataType>: Send
         self.init(key: key, value: value, creation: now, lastAccess: now)
     }
 
-    /// Creates a cache entry with explicitly supplied timestamps.
+    /// Creates a cache entry with explicitly supplied timestamps and access count.
     ///
     /// This initializer is useful when reconstructing an entry loaded from persistent storage.
-    /// The access count begins at zero.
     ///
     /// - Parameters:
     ///   - key: The unique key identifying the value.
     ///   - value: The value to store.
     ///   - creation: The date when the entry was originally created.
     ///   - lastAccess: The date when the entry was most recently accessed.
-    public init(key: KeyType, value: CachedType, creation: Date, lastAccess: Date) {
+    ///   - accessCount: The number of recorded accesses. The default is `0`.
+    public init(key: KeyType, value: CachedType, creation: Date, lastAccess: Date, accessCount: Int64 = 0) {
         self.key = key
         self.value = value
         self.creation = creation
         self.lastAccess = lastAccess
+        self.accessCount = accessCount
     }
 
     /// Records an access at a date.
