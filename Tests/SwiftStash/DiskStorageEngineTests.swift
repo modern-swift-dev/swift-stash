@@ -110,6 +110,30 @@ struct DiskStorageEngineTests {
         #expect(engine.load().first?.value == value)
     }
 
+    @Test func entryFilesKeepTheirNameAndByteLayout() throws {
+        let name = directories.make("TestByteLayout")
+        let engine = createEngineWithDirectory(name)
+        let entry = CacheEntry(
+            key: "key",
+            value: "value",
+            creation: Date(timeIntervalSince1970: 1000),
+            lastAccess: Date(timeIntervalSince1970: 1001),
+            accessCount: 2
+        )
+
+        #expect(engine.persist(entry))
+
+        let header = Data(#"{"accessCount":2,"creation":1000,"key":"key","lastAccess":1001}"#.utf8)
+        var expected = Data("SSE2".utf8)
+        withUnsafeBytes(of: UInt32(header.count + 64).bigEndian) { expected.append(contentsOf: $0) }
+        expected += header + Data(repeating: UInt8(ascii: " "), count: 64) + Data("value".utf8)
+        let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == [
+            "2c70e12b7a0646f92279f427c7b38e7334d8e5389cff167a1dc30e73f826b683.cache_entry"
+        ])
+        #expect(try entryFile(in: name) == expected)
+    }
+
     @Test func legacyJSONEntriesAreRewrittenInTheCurrentFormat() throws {
         let name = directories.make("TestLegacyFormatMigration")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(name)

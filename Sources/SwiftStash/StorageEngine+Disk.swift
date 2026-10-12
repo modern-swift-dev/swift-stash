@@ -1,22 +1,10 @@
 import Foundation
 
-#if canImport(CryptoKit)
-    import CryptoKit
-#else
-    import Crypto
-#endif
-
 #if canImport(os)
     import os.log
 #endif
 
 private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
-
-/// The bytes that start every entry file in the current format.
-private let entryFileSignature = Data("SSE2".utf8)
-
-/// The spaces reserved after each header so updated metadata can be written in place.
-private let entryHeaderPadding = 64
 
 /// A file-system-backed implementation of ``StorageEngine``.
 ///
@@ -39,11 +27,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// The writing options
     private let writingOptions: Data.WritingOptions
 
-    /// The JSON Encoder
-    private let encoder: JSONEncoder
-
-    /// The JSON Decoder
-    private let decoder: JSONDecoder
+    /// Names entry files and encodes, decodes, and updates their contents
+    private let format: EntryFileFormat
 
     /// The directory
     private let directory: URL
@@ -105,29 +90,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         writingOptions = options
         self.serializer = serializer
-
-        encoder = JSONEncoder()
-        encoder.dataEncodingStrategy = .base64
-        encoder.dateEncodingStrategy = .secondsSince1970
-        encoder.keyEncodingStrategy = .useDefaultKeys
-        encoder.outputFormatting = [.sortedKeys]
-        encoder.nonConformingFloatEncodingStrategy = .throw
-
-        decoder = JSONDecoder()
-        decoder.dataDecodingStrategy = .base64
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            if let timestamp = try? container.decode(Double.self) {
-                return Date(timeIntervalSince1970: timestamp)
-            }
-            let string = try container.decode(String.self)
-            guard let date = ISO8601DateFormatter().date(from: string) else {
-                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid legacy cache timestamp")
-            }
-            return date
-        }
-        decoder.keyDecodingStrategy = .useDefaultKeys
-        decoder.nonConformingFloatDecodingStrategy = .throw
+        format = EntryFileFormat()
     }
 
     /// Loads decodable cache-entry files from the storage directory.
@@ -165,9 +128,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         if !hasLoaded {
             _ = scan()
         }
-        let url = currentFiles[key] ?? directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+        let url = currentFiles[key] ?? entryFileURL(for: key)
         do {
-            if let value = try serializer.deserialize(decodeFile(Data(contentsOf: url)).value) {
+            if let value = try serializer.deserialize(format.decode(Data(contentsOf: url)).value) {
                 return value
             }
         } catch {
@@ -195,7 +158,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         if !hasLoaded {
             _ = scan()
         }
-        let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+        let url = entryFileURL(for: key)
         let files = (entryFiles.removeValue(forKey: key) ?? []).union([url])
         currentFiles.removeValue(forKey: key)
         for file in files {
@@ -215,10 +178,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             _ = scan()
         }
         do {
-            let stringKey = entry.key.stringValue
-            let url = directory.appendingPathComponent(stringKey.cacheEntryFileName)
+            let url = entryFileURL(for: entry.key)
             let header = EntryHeader(metadata: entry.metadata)
-            let diskData = try encodeFile(header: header, value: serializer.serialize(entry.value))
+            let diskData = try format.encode(header: header, value: serializer.serialize(entry.value))
             try diskData.write(to: url, options: writingOptions)
             currentFiles[entry.key] = url
             removeLegacyFiles(for: entry.key, keeping: url)
@@ -246,14 +208,14 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             return false
         }
         let header = EntryHeader(metadata: metadata)
-        let url = directory.appendingPathComponent(metadata.key.stringValue.cacheEntryFileName)
+        let url = entryFileURL(for: metadata.key)
         let currentURL = currentFiles[metadata.key] ?? url
         do {
-            if try overwriteHeader(of: currentURL, with: header) {
+            if try format.overwriteHeader(of: currentURL, with: header) {
                 return true
             }
-            let file = try decodeFile(Data(contentsOf: currentURL))
-            try encodeFile(header: header, value: file.value).write(to: url, options: writingOptions)
+            let file = try format.decode(Data(contentsOf: currentURL))
+            try format.encode(header: header, value: file.value).write(to: url, options: writingOptions)
             currentFiles[metadata.key] = url
             removeLegacyFiles(for: metadata.key, keeping: url)
             return true
@@ -261,27 +223,6 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             log(error)
             return false
         }
-    }
-
-    /// Writes a header over the header region of a current-format file.
-    ///
-    /// - Returns: `false` when the file isn't in the current format or the header doesn't fit.
-    private func overwriteHeader(of url: URL, with header: EntryHeader) throws -> Bool {
-        let handle = try FileHandle(forUpdating: url)
-        defer { try? handle.close() }
-        let prefixLength = entryFileSignature.count + MemoryLayout<UInt32>.size
-        let prefix = try handle.read(upToCount: prefixLength) ?? Data()
-        guard prefix.count == prefixLength, prefix.starts(with: entryFileSignature) else {
-            return false
-        }
-        let regionLength = prefix.dropFirst(entryFileSignature.count).reduce(0) { $0 << 8 | Int($1) }
-        let headerData = try encoder.encode(header)
-        guard headerData.count <= regionLength else {
-            return false
-        }
-        try handle.seek(toOffset: UInt64(prefixLength))
-        try handle.write(contentsOf: headerData + Data(repeating: UInt8(ascii: " "), count: regionLength - headerData.count))
-        return true
     }
 
     /// Removes every cache-entry file in the storage directory.
@@ -303,6 +244,11 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         }
     }
 
+    /// The canonical entry file of a key.
+    private func entryFileURL(for key: KeyType) -> URL {
+        directory.appendingPathComponent(format.fileName(for: key.stringValue))
+    }
+
     private func removeLegacyFiles(for key: KeyType, keeping url: URL) {
         var remaining: Set<URL> = [url]
         for file in entryFiles[key] ?? [] where file != url {
@@ -313,47 +259,6 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             }
         }
         entryFiles[key] = remaining
-    }
-
-    /// Encodes an entry file: the signature, the header region's length as a big-endian `UInt32`,
-    /// the header region (the JSON header followed by spaces reserved for metadata updates),
-    /// then the serialized value.
-    private func encodeFile(header: EntryHeader, value: Data) throws -> Data {
-        let headerData = try encoder.encode(header)
-        var data = entryFileSignature
-        withUnsafeBytes(of: UInt32(headerData.count + entryHeaderPadding).bigEndian) { data.append(contentsOf: $0) }
-        data.append(headerData)
-        data.append(Data(repeating: UInt8(ascii: " "), count: entryHeaderPadding))
-        data.append(value)
-        return data
-    }
-
-    /// Decodes an entry file in the current format or the JSON format of earlier releases.
-    private func decodeFile(_ data: Data) throws -> EntryFile {
-        guard data.starts(with: entryFileSignature) else {
-            let legacy = try decoder.decode(LegacyEntry.self, from: data)
-            let header = EntryHeader(
-                key: legacy.key,
-                creation: legacy.creation,
-                lastAccess: legacy.lastAccess,
-                accessCount: legacy.accessCount ?? 0,
-                expiration: legacy.expiration,
-                cost: nil
-            )
-            return EntryFile(header: header, value: legacy.value, isLegacyFormat: true)
-        }
-        let lengthStart = data.startIndex + entryFileSignature.count
-        let headerStart = lengthStart + MemoryLayout<UInt32>.size
-        guard data.endIndex >= headerStart else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let headerLength = data[lengthStart ..< headerStart].reduce(0) { $0 << 8 | Int($1) }
-        let headerEnd = headerStart + headerLength
-        guard data.endIndex >= headerEnd else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let header = try decoder.decode(EntryHeader.self, from: data[headerStart ..< headerEnd])
-        return EntryFile(header: header, value: Data(data[headerEnd...]), isLegacyFormat: false)
     }
 
     /// Reads the header of every entry file, merges equivalent keys, and migrates legacy files.
@@ -370,7 +275,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         )) ?? []
         for fileURL in fileURLs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where fileURL.pathExtension == "cache_entry" {
             do {
-                let scanned = try readHeader(of: fileURL)
+                let scanned = try format.readHeader(of: fileURL)
                 guard let key = KeyType(stringValue: scanned.header.key) else {
                     try? FileManager.default.removeItem(at: fileURL)
                     continue
@@ -391,13 +296,13 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         for (key, scanned) in newest {
             headers[key] = scanned.header
             currentFiles[key] = scanned.url
-            let url = directory.appendingPathComponent(key.stringValue.cacheEntryFileName)
+            let url = entryFileURL(for: key)
             guard entryFiles[key] != Set([url]) || scanned.isLegacyFormat else {
                 continue
             }
             do {
-                let file = try decodeFile(Data(contentsOf: scanned.url))
-                try encodeFile(header: file.header, value: file.value).write(to: url, options: writingOptions)
+                let file = try format.decode(Data(contentsOf: scanned.url))
+                try format.encode(header: file.header, value: file.value).write(to: url, options: writingOptions)
                 currentFiles[key] = url
                 removeLegacyFiles(for: key, keeping: url)
             } catch {
@@ -405,98 +310,6 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             }
         }
         return headers
-    }
-
-    /// Reads an entry file's header without reading its value, except for files in the
-    /// JSON format of earlier releases, which are read whole.
-    private func readHeader(of url: URL) throws -> ScannedFile {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        let prefixLength = entryFileSignature.count + MemoryLayout<UInt32>.size
-        let prefix = try handle.read(upToCount: prefixLength) ?? Data()
-        guard prefix.count == prefixLength, prefix.starts(with: entryFileSignature) else {
-            let file = try decodeFile(Data(contentsOf: url))
-            return ScannedFile(url: url, header: file.header, isLegacyFormat: file.isLegacyFormat)
-        }
-        let headerLength = prefix.dropFirst(entryFileSignature.count).reduce(0) { $0 << 8 | Int($1) }
-        let headerData = try handle.read(upToCount: headerLength) ?? Data()
-        guard headerData.count == headerLength else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let header = try decoder.decode(EntryHeader.self, from: headerData)
-        return ScannedFile(url: url, header: header, isLegacyFormat: false)
-    }
-
-    /// An entry file's location and header
-    private struct ScannedFile {
-        let url: URL
-        let header: EntryHeader
-        let isLegacyFormat: Bool
-    }
-
-    /// The decoded contents of an entry file
-    private struct EntryFile {
-        let header: EntryHeader
-        let value: Data
-        let isLegacyFormat: Bool
-    }
-
-    /// The metadata stored at the start of an entry file
-    private struct EntryHeader: Codable {
-        var key: String
-        var creation: Date
-        var lastAccess: Date
-        var accessCount: Int64
-        var expiration: Date?
-
-        /// Absent when the entry was stored by a cache without a cost limit
-        var cost: Int?
-
-        init(key: String, creation: Date, lastAccess: Date, accessCount: Int64, expiration: Date?, cost: Int?) {
-            self.key = key
-            self.creation = creation
-            self.lastAccess = lastAccess
-            self.accessCount = accessCount
-            self.expiration = expiration
-            self.cost = cost
-        }
-
-        init(metadata: CacheEntryMetadata<KeyType>) {
-            self.init(
-                key: metadata.key.stringValue,
-                creation: metadata.creation,
-                lastAccess: metadata.lastAccess,
-                accessCount: metadata.accessCount,
-                expiration: metadata.expiration,
-                cost: metadata.cost
-            )
-        }
-
-        func metadata(for key: KeyType) -> CacheEntryMetadata<KeyType> {
-            CacheEntryMetadata(
-                key: key,
-                creation: creation,
-                lastAccess: lastAccess,
-                accessCount: accessCount,
-                expiration: expiration,
-                cost: cost
-            )
-        }
-    }
-
-    /// An entry file in the JSON format of earlier releases, with a base64-encoded value
-    private struct LegacyEntry: Decodable {
-        var key: String
-        var creation: Date
-        var lastAccess: Date
-
-        /// Absent from entries written before access counts were stored
-        var accessCount: Int64?
-
-        /// Absent from entries written before per-entry lifetimes
-        var expiration: Date?
-
-        var value: Data
     }
 
 }
@@ -529,13 +342,4 @@ private func log(_ error: any Error) {
     #if canImport(os)
         os_log("%{public}@", log: .default, type: .error, String(describing: error))
     #endif
-}
-
-extension String {
-    /// A fixed-length filename, so keys of any length stay within file-system name limits.
-    var cacheEntryFileName: String {
-        SHA256.hash(data: Data(precomposedStringWithCanonicalMapping.utf8))
-            .map { String(format: "%02x", $0) }
-            .joined() + ".cache_entry"
-    }
 }
