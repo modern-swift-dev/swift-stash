@@ -45,6 +45,9 @@ public protocol StorageEngine {
     /// Loads the value stored for a key.
     ///
     /// A cache calls this method only when ``loadMetadata()`` returns a non-`nil` value.
+    /// When this method returns `nil`, the cache forgets the entry without deleting it from
+    /// storage. Remove a stored entry that can't be read before returning, and keep one that's
+    /// only temporarily unavailable.
     ///
     /// - Parameter key: The key of the entry whose value to load.
     /// - Returns: The stored value, or `nil` when it's missing or can't be read.

@@ -61,7 +61,7 @@ It doesn't protect against:
 
 - **Use a random 256-bit encryption key.** Create it with `SymmetricKey(size: .bits256)`. Don't derive it from a password or reuse an encryption key that protects other data.
 - **Combine encryption with `.completeFileProtection`.** Pass it in the engine's `options` so iOS also encrypts entry files with a file-protection key that's unavailable while the device is locked.
-- **Avoid reads while the device is locked.** With `.completeFileProtection`, entry files can't be opened while the device is locked, and the engine currently deletes protected entry files it fails to read ([#2](https://github.com/modern-swift-dev/swift-stash/issues/2)). Don't use the cache from background work that can run while the device is locked.
+- **Expect misses while the device is locked.** With `.completeFileProtection`, entry files can't be opened while the device is locked. The engine leaves them in place, and the cache treats their entries as missing: a read returns `nil` and forgets the entry until the cache is next created. A cache first used while the device is locked starts without them. Create the cache after the device is unlocked when background work needs its entries.
 - **Store the encryption key in the Keychain,** with an accessibility class that keeps it on this device, such as `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
 
 ## Changing or deleting the encryption key

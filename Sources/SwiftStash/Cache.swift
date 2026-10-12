@@ -271,7 +271,9 @@ public actor Cache<StorageEngineType: StorageEngine> {
 
     /// Returns an entry's value, loading it from storage if needed.
     ///
-    /// An entry whose value can't be loaded is removed.
+    /// An entry whose value can't be loaded is removed from the cache but left to its storage
+    /// engine, which removes stored entries that can't be read and keeps those that are only
+    /// unavailable, such as protected files while the device is locked.
     private func loadedValue(for key: KeyType) -> CacheType? {
         guard var slot = slots[key] else {
             return nil
@@ -280,7 +282,8 @@ public actor Cache<StorageEngineType: StorageEngine> {
             return value
         }
         guard let value = storageEngine.loadValue(for: key) else {
-            remove(key)
+            slots.removeValue(forKey: key)
+            loadedTotalCost -= slot.metadata.cost ?? 0
             return nil
         }
         slot.value = value

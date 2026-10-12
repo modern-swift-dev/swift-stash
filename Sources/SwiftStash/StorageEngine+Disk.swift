@@ -124,7 +124,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// Loads decodable cache-entry files from the storage directory.
     ///
     /// Files that cannot be read, decoded, or deserialized are removed on a best-effort
-    /// basis. If the directory cannot be enumerated, this method returns an empty array.
+    /// basis. Files that cannot be opened, such as protected files while the device is locked,
+    /// are skipped and left in place. If the directory cannot be enumerated, this method
+    /// returns an empty array.
     /// Equivalent keys are merged by newest creation date, then last-access date.
     /// Legacy filenames and files in the JSON format of earlier releases are migrated when
     /// writing succeeds; failed migrations retain their source files.
@@ -148,7 +150,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
     /// Reads and deserializes the value stored for a key.
     ///
-    /// A file that can't be read, decoded, or deserialized is removed.
+    /// A file that can't be read, decoded, or deserialized is removed. A file that can't be
+    /// opened, such as a protected file while the device is locked, is left in place.
     ///
     /// - Parameter key: The key of the entry whose value to load.
     /// - Returns: The stored value, or `nil` when it's missing or can't be read.
@@ -163,6 +166,9 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             }
         } catch {
             log(error)
+            if isPermissionDenied(error) {
+                return nil
+            }
         }
         delete(forKey: key)
         return nil
@@ -297,6 +303,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         entryFiles.removeAll()
         currentFiles.removeAll()
         var newest: [KeyType: ScannedFile] = [:]
+        var unopenedFiles: Set<URL> = []
         let fileURLs = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
@@ -317,7 +324,11 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                 newest[key] = scanned
             } catch {
                 log(error)
-                try? FileManager.default.removeItem(at: fileURL)
+                if isPermissionDenied(error) {
+                    unopenedFiles.insert(fileURL)
+                } else {
+                    try? FileManager.default.removeItem(at: fileURL)
+                }
             }
         }
         var headers: [KeyType: EntryHeader] = [:]
@@ -325,7 +336,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             headers[key] = scanned.header
             currentFiles[key] = scanned.url
             let url = entryFileURL(for: key)
-            guard entryFiles[key] != Set([url]) || scanned.isLegacyFormat else {
+            // An entry file that can't be opened may be newer, so don't migrate over it.
+            guard entryFiles[key] != Set([url]) || scanned.isLegacyFormat, !unopenedFiles.contains(url) else {
                 continue
             }
             do {
@@ -364,6 +376,16 @@ extension URL {
     static func cacheDirectoryOwner(bundleIdentifier: String?, processName: String) -> String {
         bundleIdentifier ?? processName
     }
+}
+
+/// Whether an error means an entry file can't be opened, as with a protected file while the
+/// device is locked, rather than that it's damaged.
+private func isPermissionDenied(_ error: any Error) -> Bool {
+    guard let error = error as? CocoaError else {
+        return false
+    }
+    // Opening a file handle reports a write error on Apple platforms even when reading.
+    return error.code == .fileReadNoPermission || error.code == .fileWriteNoPermission
 }
 
 private func log(_ error: any Error) {
