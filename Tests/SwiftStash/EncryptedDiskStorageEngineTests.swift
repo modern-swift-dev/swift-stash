@@ -278,6 +278,141 @@ struct EncryptedDiskStorageEngineTests {
         #expect(engine(name).load().map(\.key) == [key])
     }
 
+    // MARK: - Unreadable Entry Files
+
+    /// A sealed region of an encrypted entry file.
+    enum SealedRegion: CaseIterable {
+        case header
+        case value
+    }
+
+    /// An encrypted entry file's sealed entry header and sealed value, located by the header
+    /// region's length that follows the 4-byte signature.
+    private func sealedRegions(of data: Data) -> (header: Data, value: Data) {
+        let headerLength = data[4 ..< 8].reduce(0) { $0 << 8 | Int($1) }
+        return (Data(data[8 ..< 8 + headerLength]), Data(data[(8 + headerLength)...]))
+    }
+
+    /// An encrypted entry file made of a header region and a value region.
+    private func encryptedFile(header: Data, value: Data) -> Data {
+        var data = Data("SSC1".utf8)
+        withUnsafeBytes(of: UInt32(header.count).bigEndian) { data.append(contentsOf: $0) }
+        return data + header + value
+    }
+
+    /// Persists entries and returns their entry file locations, by cache key.
+    private func persist(_ entries: [String: String], in name: String) throws -> [String: URL] {
+        let engine = engine(name)
+        var urls: [String: URL] = [:]
+        for (key, value) in entries {
+            let before = try Set(entryFiles(in: name).keys)
+            #expect(engine.persist(CacheEntry(key: key, value: value)))
+            let added = try Set(entryFiles(in: name).keys).subtracting(before)
+            urls[key] = try directory(name).appendingPathComponent(#require(added.first))
+        }
+        return urls
+    }
+
+    @Test(arguments: SealedRegion.allCases) func tamperedEntryFilesAreDeleted(region: SealedRegion) throws {
+        let name = directories.make("TestEncryptedTampered")
+        let urls = try persist(["a": "one", "b": "two"], in: name)
+        let url = try #require(urls["a"])
+        var data = try Data(contentsOf: url)
+        // Flip a bit of the header ciphertext, past the 8-byte prefix and 12-byte nonce, or of the value tag.
+        data[region == .header ? 8 + 12 + 8 : data.count - 1] ^= 0x01
+        try data.write(to: url)
+
+        #expect(engine(name).load().map(\.key) == ["b"])
+        #expect(try entryFiles(in: name).keys.sorted() == [try #require(urls["b"]).lastPathComponent])
+    }
+
+    @Test func tamperedSealedValuesAreNeverReturnedByLazyLoading() throws {
+        let name = directories.make("TestEncryptedTamperedValue")
+        let url = try #require(persist(["a": "one"], in: name)["a"])
+        var data = try Data(contentsOf: url)
+        data[data.count - 1] ^= 0x01
+        try data.write(to: url)
+        let engine = engine(name)
+
+        #expect(engine.loadMetadata()?.map(\.key) == ["a"])
+        #expect(engine.loadValue(for: "a") == nil)
+        #expect(try entryFiles(in: name).isEmpty)
+    }
+
+    @Test func truncatedEncryptedEntryFilesAreDeleted() throws {
+        let name = directories.make("TestEncryptedTruncated")
+        let url = try #require(persist(["a": "one"], in: name)["a"])
+        try Data(Data(contentsOf: url).prefix(40)).write(to: url)
+
+        #expect(engine(name).load().isEmpty)
+        #expect(try entryFiles(in: name).isEmpty)
+    }
+
+    @Test(arguments: SealedRegion.allCases) func sealedRegionsMovedBetweenEntryFilesAreRejected(region: SealedRegion) throws {
+        let name = directories.make("TestEncryptedSwapped")
+        let urls = try persist(["a": "one", "b": "two"], in: name)
+        let a = try #require(urls["a"])
+        let b = try #require(urls["b"])
+        let regionsA = try sealedRegions(of: Data(contentsOf: a))
+        let regionsB = try sealedRegions(of: Data(contentsOf: b))
+        // Leave only the mixed file, so nothing else can explain an empty result.
+        try FileManager.default.removeItem(at: b)
+        let mixed = region == .header
+            ? encryptedFile(header: regionsB.header, value: regionsA.value)
+            : encryptedFile(header: regionsA.header, value: regionsB.value)
+        try mixed.write(to: a)
+
+        #expect(engine(name).load().isEmpty)
+        #expect(try entryFiles(in: name).isEmpty)
+    }
+
+    @Test func sealedRegionsSwappedBetweenRolesAreRejected() throws {
+        let name = directories.make("TestEncryptedSwappedRoles")
+        // A value that is also a valid entry header, so only role binding can reject the swap.
+        let url = try #require(persist(["a": #"{"accessCount":0,"creation":1000,"key":"a","lastAccess":1000}"#], in: name)["a"])
+        let regions = try sealedRegions(of: Data(contentsOf: url))
+        try encryptedFile(header: regions.value, value: regions.header).write(to: url)
+
+        #expect(engine(name).load().isEmpty)
+        #expect(try entryFiles(in: name).isEmpty)
+    }
+
+    @Test func entryFilesSealedWithAnotherEncryptionKeyAreDeletedOnScan() throws {
+        let name = directories.make("TestEncryptedOtherEncryptionKey")
+        let previous = SymmetricKey(size: .bits256)
+        #expect(engine(name, encryptionKey: previous).persist(CacheEntry(key: "old", value: "value")))
+        #expect(engine(name).persist(CacheEntry(key: "new", value: "value")))
+
+        #expect(engine(name).loadMetadata()?.map(\.key) == ["new"])
+        #expect(try entryFiles(in: name).count == 1)
+        #expect(engine(name, encryptionKey: previous).load().isEmpty)
+    }
+
+    @Test func plaintextEntryFilesAreDeletedRatherThanMigrated() throws {
+        let name = directories.make("TestEncryptedPlaintext")
+        let control = directories.make("TestEncryptedPlaintextControl")
+        let legacy = Data(#"{"key":"legacy","creation":1000,"lastAccess":1001,"value":"dmFsdWU="}"#.utf8)
+        for directoryName in [name, control] {
+            #expect(DiskStorageEngine(directory: directoryName, serializer: TextDiskStorageSerializer()).persist(CacheEntry(key: "key", value: "value")))
+            try legacy.write(to: directory(directoryName).appendingPathComponent("legacy.cache_entry"))
+        }
+        try Data("notes".utf8).write(to: directory(name).appendingPathComponent("notes.txt"))
+
+        #expect(engine(name).load().isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory(name).path) == ["notes.txt"])
+        // The same files are readable without an encryption key.
+        let plaintextEntries = DiskStorageEngine(directory: control, serializer: TextDiskStorageSerializer()).load()
+        #expect(plaintextEntries.map(\.key).sorted() == ["key", "legacy"])
+    }
+
+    @Test func enginesWithoutAnEncryptionKeyDeleteEncryptedEntryFiles() throws {
+        let name = directories.make("TestEncryptedWithoutEncryptionKey")
+        #expect(engine(name).persist(CacheEntry(key: "key", value: "value")))
+
+        #expect(DiskStorageEngine(directory: name, serializer: TextDiskStorageSerializer()).load().isEmpty)
+        #expect(try entryFiles(in: name).isEmpty)
+    }
+
     // MARK: - Encryption Key Strength
 
     #if compiler(>=6.2) && (os(macOS) || os(Linux))

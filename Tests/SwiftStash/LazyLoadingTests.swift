@@ -383,6 +383,21 @@ struct LazyLoadingTests {
         #expect(after.value == before.value)
     }
 
+    @Test func encryptedValuesThatCannotBeDecryptedAreRemovedWhenRead() async throws {
+        let directory = await storeEntries(["a": "one"], encryptionKey: encryptionKey)
+        let url = try onlyEntryFile(in: directory)
+        #expect(encryptedEngine(directory).persist(CacheEntry(key: "b", value: "two")))
+        let cache = reopen(directory, serializer: CountingSerializer(), encryptionKey: encryptionKey)
+        #expect(await cache.count == 2)
+        var data = try Data(contentsOf: url)
+        data[data.count - 1] ^= 0x01
+        try data.write(to: url)
+
+        #expect(await cache["a"] == nil)
+        #expect(await cache.keys() == ["b"])
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     @Test func encryptedPersistMetadataFailsWithoutAnEntryFile() {
         let date = Date(timeIntervalSince1970: 1000)
 
