@@ -1,5 +1,11 @@
 import Foundation
 
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import Crypto
+#endif
+
 #if canImport(os)
     import os.log
 #endif
@@ -13,6 +19,10 @@ private let diskStorageWritingOptions: Data.WritingOptions = [.atomic]
 /// metadata header followed by the serialized value, unencoded. The engine creates the
 /// named directory when it is initialized. Apps store entries under their bundle
 /// identifier; processes without one, such as command-line tools, use their process name.
+///
+/// Pass an encryption key to encrypt every entry file, including its cache key and entry
+/// metadata, with AES-256-GCM, and to name each file with a keyed hash of its cache key.
+/// SwiftStash doesn't create or store encryption keys; the app supplies its own.
 ///
 /// Example:
 /// ```swift
@@ -50,11 +60,16 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     /// - Parameters:
     ///   - directory: The name of the directory below the app cache directory.
     ///   - serializer: The serializer used to convert stored values to and from data.
+    ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
+    ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
+    ///     deletes entry files it can't decrypt, including files written with another encryption key
+    ///     or without one.
     public convenience init(
         directory: String,
-        serializer: Serializer
+        serializer: Serializer,
+        encryptionKey: SymmetricKey? = nil
     ) where KeyType == String {
-        self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions)
+        self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions, encryptionKey: encryptionKey)
     }
 
     /// Creates an engine for a typed key that stores entries in a named cache directory.
@@ -65,12 +80,17 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///   - directory: The name of the directory below the app cache directory.
     ///   - keyType: The key type used by this engine.
     ///   - serializer: The serializer used to convert stored values to and from data.
+    ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
+    ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
+    ///     deletes entry files it can't decrypt, including files written with another encryption key
+    ///     or without one.
     public convenience init(
         directory: String,
         keyType _: KeyType.Type,
-        serializer: Serializer
+        serializer: Serializer,
+        encryptionKey: SymmetricKey? = nil
     ) {
-        self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions)
+        self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions, encryptionKey: encryptionKey)
     }
 
     /// Creates an engine that stores entries in a named directory below the app cache directory.
@@ -81,16 +101,24 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///   - directory: The name of the directory below the app cache directory.
     ///   - serializer: The serializer used to convert stored values to and from data.
     ///   - options: Options passed to file writes, including writes that migrate legacy filenames.
+    ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
+    ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
+    ///     deletes entry files it can't decrypt, including files written with another encryption key
+    ///     or without one.
     public init(
         directory: String,
         serializer: Serializer,
-        options: Data.WritingOptions
+        options: Data.WritingOptions,
+        encryptionKey: SymmetricKey? = nil
     ) {
+        if let encryptionKey {
+            precondition(encryptionKey.bitCount >= 256, "The encryption key must be at least 256 bits long")
+        }
         self.directory = URL.swiftStashCacheDirectory.appendingPathComponent(directory)
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         writingOptions = options
         self.serializer = serializer
-        format = EntryFileFormat()
+        format = EntryFileFormat(encryptionKey: encryptionKey)
     }
 
     /// Loads decodable cache-entry files from the storage directory.
@@ -130,7 +158,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         }
         let url = currentFiles[key] ?? entryFileURL(for: key)
         do {
-            if let value = try serializer.deserialize(format.decode(Data(contentsOf: url)).value) {
+            if let value = try serializer.deserialize(format.decodeFile(at: url).value) {
                 return value
             }
         } catch {
@@ -180,7 +208,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         do {
             let url = entryFileURL(for: entry.key)
             let header = EntryHeader(metadata: entry.metadata)
-            let diskData = try format.encode(header: header, value: serializer.serialize(entry.value))
+            let diskData = try format.encode(header: header, value: serializer.serialize(entry.value), for: url)
             try diskData.write(to: url, options: writingOptions)
             currentFiles[entry.key] = url
             removeLegacyFiles(for: entry.key, keeping: url)
@@ -214,8 +242,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             if try format.overwriteHeader(of: currentURL, with: header) {
                 return true
             }
-            let file = try format.decode(Data(contentsOf: currentURL))
-            try format.encode(header: header, value: file.value).write(to: url, options: writingOptions)
+            let file = try format.decodeFile(at: currentURL)
+            try format.encode(header: header, value: file.value, for: url).write(to: url, options: writingOptions)
             currentFiles[metadata.key] = url
             removeLegacyFiles(for: metadata.key, keeping: url)
             return true
@@ -301,8 +329,8 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
                 continue
             }
             do {
-                let file = try format.decode(Data(contentsOf: scanned.url))
-                try format.encode(header: file.header, value: file.value).write(to: url, options: writingOptions)
+                let file = try format.decodeFile(at: scanned.url)
+                try format.encode(header: file.header, value: file.value, for: url).write(to: url, options: writingOptions)
                 currentFiles[key] = url
                 removeLegacyFiles(for: key, keeping: url)
             } catch {
