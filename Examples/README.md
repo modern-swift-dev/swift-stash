@@ -5,6 +5,7 @@ Each directory is a standalone executable Swift package that uses the local Swif
 ```sh
 swift run --package-path Examples/memory-cache
 swift run --package-path Examples/disk-cache
+swift run --package-path Examples/encrypted-disk-cache
 swift run --package-path Examples/custom-serializer
 ```
 

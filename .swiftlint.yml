@@ -2,6 +2,7 @@ excluded:
   - .build
   - Examples/custom-serializer/.build
   - Examples/disk-cache/.build
+  - Examples/encrypted-disk-cache/.build
   - Examples/memory-cache/.build
   - .swiftpm
 

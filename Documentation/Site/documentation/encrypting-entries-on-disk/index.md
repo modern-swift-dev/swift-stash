@@ -31,7 +31,27 @@ let storage = DiskStorageEngine(
 let cache = Cache(storageEngine: storage)
 ```
 
-Encryption works with any serializer and any writing options. Without an encryption key, the engine behaves exactly as before. On Linux, Android, and Windows, `SymmetricKey` comes from [swift-crypto](https://github.com/apple/swift-crypto): add it to your package and `import Crypto` instead of `CryptoKit`.
+Encryption works with any serializer and any writing options. Without an encryption key, the engine behaves exactly as before. On Linux, Android, and Windows, `SymmetricKey` comes from [swift-crypto](https://github.com/apple/swift-crypto), which SwiftStash doesn't re-export. Add it to your package for the platforms without CryptoKit, with a version range that overlaps SwiftStash's, and import it in place of CryptoKit, as the [encrypted disk cache example](/docs/swift-stash/examples/#encrypted-disk-cache) does.
+
+Package.swift
+
+```swift
+.product(
+    name: "Crypto",
+    package: "swift-crypto",
+    condition: .when(platforms: [.linux, .android, .windows, .openbsd, .wasi])
+)
+```
+
+Swift
+
+```swift
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import Crypto
+#endif
+```
 
 ## What gets encrypted
 

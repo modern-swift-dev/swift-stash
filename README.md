@@ -158,6 +158,7 @@ The examples are independent, executable Swift packages:
 
 - [Memory cache](Examples/memory-cache) - basic reads, writes, identifiable values, and count-based eviction.
 - [Disk cache](Examples/disk-cache) - persistent `Codable` values with the JSON serializer.
+- [Encrypted disk cache](Examples/encrypted-disk-cache) - encrypted entry files, with swift-crypto on non-Apple platforms.
 - [Custom serializer](Examples/custom-serializer) - storing a custom value with a binary representation.
 
 The [examples guide](https://modern-swift-dev.github.io/docs/swift-stash/examples/) explains each program before showing its complete source.
