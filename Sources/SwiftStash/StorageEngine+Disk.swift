@@ -93,6 +93,30 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
         self.init(directory: directory, serializer: serializer, options: diskStorageWritingOptions, encryptionKey: encryptionKey)
     }
 
+    /// Creates an engine for a typed key that stores entries in a named cache directory, with
+    /// options for its file writes.
+    ///
+    /// The named directory is created if it doesn't already exist.
+    ///
+    /// - Parameters:
+    ///   - directory: The name of the directory below the app cache directory.
+    ///   - keyType: The key type used by this engine.
+    ///   - serializer: The serializer used to convert stored values to and from data.
+    ///   - options: Options passed to file writes, including writes that migrate legacy filenames.
+    ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
+    ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
+    ///     deletes entry files it can't decrypt, including files written with another encryption key
+    ///     or without one. See [Encrypting entries on disk](https://modern-swift-dev.github.io/docs/swift-stash/documentation/encrypting-entries-on-disk/).
+    public convenience init(
+        directory: String,
+        keyType _: KeyType.Type,
+        serializer: Serializer,
+        options: Data.WritingOptions,
+        encryptionKey: SymmetricKey? = nil
+    ) {
+        self.init(directory: directory, serializer: serializer, options: options, encryptionKey: encryptionKey)
+    }
+
     /// Creates an engine that stores entries in a named directory below the app cache directory.
     ///
     /// The named directory is created if it doesn't already exist.

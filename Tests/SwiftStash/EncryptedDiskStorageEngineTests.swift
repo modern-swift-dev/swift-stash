@@ -154,10 +154,18 @@ struct EncryptedDiskStorageEngineTests {
         let name = directories.make("TestEncryptedInitializers")
         let stringEngine = DiskStorageEngine(directory: name, serializer: TextDiskStorageSerializer(), encryptionKey: encryptionKey)
         let typedEngine = DiskStorageEngine(directory: name, keyType: Key.self, serializer: TextDiskStorageSerializer(), encryptionKey: encryptionKey)
+        let typedEngineWithOptions = DiskStorageEngine(
+            directory: name,
+            keyType: Key.self,
+            serializer: TextDiskStorageSerializer(),
+            options: [.atomic],
+            encryptionKey: encryptionKey
+        )
 
         #expect(stringEngine.persist(CacheEntry(key: "known", value: "value")))
 
         #expect(typedEngine.load().first?.value == "value")
+        #expect(typedEngineWithOptions.load().first?.value == "value")
         #expect(try entryFiles(in: name).values.allSatisfy { $0.starts(with: Data("SSC1".utf8)) })
     }
 

@@ -285,6 +285,20 @@ struct DiskStorageEngineTests {
         engine.clear()
     }
 
+    @Test func typedKeyEnginesAcceptWritingOptions() {
+        let dirName = directories.make("TestTypedKeyOptions")
+        let engine = DiskStorageEngine(
+            directory: dirName,
+            keyType: TestKey.self,
+            serializer: TextDiskStorageSerializer(),
+            options: [.withoutOverwriting]
+        )
+
+        #expect(engine.persist(CacheEntry(key: .known, value: "old")))
+        #expect(!engine.persist(CacheEntry(key: .known, value: "new")))
+        #expect(engine.load().map(\.value) == ["old"])
+    }
+
     @Test func stringAndEnumKeysUseTheSameDiskRepresentation() {
         let dirName = directories.make("TestCompatibleKey")
         let directory = URL.swiftStashCacheDirectory.appendingPathComponent(dirName)

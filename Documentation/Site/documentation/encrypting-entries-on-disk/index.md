@@ -21,9 +21,10 @@ Swift
 import CryptoKit
 import SwiftStash
 
-let storage = DiskStorageEngine<AccountKey, Account, JsonDiskStorageSerializer<Account>>(
+let storage = DiskStorageEngine(
     directory: "accounts",
-    serializer: JsonDiskStorageSerializer(),
+    keyType: AccountKey.self,
+    serializer: JsonDiskStorageSerializer<Account>(),
     options: [.atomic, .completeFileProtection],
     encryptionKey: try CacheEncryptionKeyStore.encryptionKey()
 )
