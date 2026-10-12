@@ -63,7 +63,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
     ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
     ///     deletes entry files it can't decrypt, including files written with another encryption key
-    ///     or without one.
+    ///     or without one. See [Encrypting entries on disk](https://modern-swift-dev.github.io/docs/swift-stash/documentation/encrypting-entries-on-disk/).
     public convenience init(
         directory: String,
         serializer: Serializer,
@@ -83,7 +83,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
     ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
     ///     deletes entry files it can't decrypt, including files written with another encryption key
-    ///     or without one.
+    ///     or without one. See [Encrypting entries on disk](https://modern-swift-dev.github.io/docs/swift-stash/documentation/encrypting-entries-on-disk/).
     public convenience init(
         directory: String,
         keyType _: KeyType.Type,
@@ -104,7 +104,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
     ///   - encryptionKey: An encryption key of at least 256 bits that encrypts each entry file and
     ///     makes its name unguessable, or `nil`, the default, to store entries unencrypted. The engine
     ///     deletes entry files it can't decrypt, including files written with another encryption key
-    ///     or without one.
+    ///     or without one. See [Encrypting entries on disk](https://modern-swift-dev.github.io/docs/swift-stash/documentation/encrypting-entries-on-disk/).
     public init(
         directory: String,
         serializer: Serializer,

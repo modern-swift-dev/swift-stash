@@ -15,6 +15,10 @@ SwiftStash has a narrow API. The guide covers installation, memory caches, disk 
 
 Check requirements, add the package, create a cache, and make the first read.
 
+## [Encrypting entries on disk](/docs/swift-stash/documentation/encrypting-entries-on-disk/)
+
+Encrypt entry files with an encryption key your app supplies, and learn what that protects.
+
 ## [Memory storage](/docs/swift-stash/examples/#memory-cache)
 
 Use MemoryStorageEngine when values should last only as long as the cache actor.
