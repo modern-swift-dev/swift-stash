@@ -1,0 +1,3 @@
+# SwiftStash doesn't manage encryption keys
+
+The disk storage engine encrypts entry files with an encryption key the app supplies, and SwiftStash never creates, stores, or retrieves encryption keys itself. We considered shipping a Keychain helper that generates the encryption key on first use, and rejected it: the right policy (Keychain accessibility, Secure Enclave wrapping, biometric gating, server-derived keys) is specific to each app and its security team, and the Keychain doesn't exist on the non-Apple platforms SwiftStash supports. The documentation shows how an app might store its encryption key in the Keychain, as sample code rather than API.

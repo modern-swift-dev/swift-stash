@@ -40,3 +40,4 @@ playground.xcworkspace
 # Generated documentation is published by modern-swift-dev/docs.
 /docs/*
 !/docs/agents/
+!/docs/adr/
