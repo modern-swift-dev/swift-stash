@@ -221,9 +221,10 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
 
     /// Writes an entry's updated metadata over the header of its file, leaving the value untouched.
     ///
-    /// When the new header doesn't fit in the space reserved for it, the file is rewritten
-    /// around its existing value bytes, without serializing the value again. In-place updates
-    /// aren't atomic; a file damaged by an interrupted update is removed when it's next loaded.
+    /// An encrypted entry header is re-sealed with a fresh nonce. When the new header doesn't fit
+    /// in the space reserved for it, the file is rewritten around its existing value bytes, or its
+    /// sealed value, without serializing the value again. In-place updates aren't atomic; a file
+    /// damaged by an interrupted update is removed when it's next loaded.
     ///
     /// - Parameter metadata: The updated metadata of a stored entry.
     /// - Returns: `true` when the metadata was written; `false` when the entry's file is missing or
@@ -242,8 +243,7 @@ public class DiskStorageEngine<KeyType: CacheKey, StoredType: Sendable, Serializ
             if try format.overwriteHeader(of: currentURL, with: header) {
                 return true
             }
-            let file = try format.decodeFile(at: currentURL)
-            try format.encode(header: header, value: file.value, for: url).write(to: url, options: writingOptions)
+            try format.encode(header: header, keepingValueOf: currentURL, for: url).write(to: url, options: writingOptions)
             currentFiles[metadata.key] = url
             removeLegacyFiles(for: metadata.key, keeping: url)
             return true

@@ -22,6 +22,9 @@ struct EntryFileCipher {
         case value = 2
     }
 
+    /// The bytes sealing adds to a region: the nonce and the authentication tag.
+    static let overhead = 12 + 16
+
     /// The subkey that seals entry headers and values
     private let contentKey: SymmetricKey
 

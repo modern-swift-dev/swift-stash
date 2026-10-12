@@ -82,16 +82,27 @@ struct EntryFileFormat {
             headerRegion = padded(headerData, to: headerData.count + entryHeaderPadding)
             valueRegion = value
         }
-        var data = signature
-        withUnsafeBytes(of: UInt32(headerRegion.count).bigEndian) { data.append(contentsOf: $0) }
-        return data + headerRegion + valueRegion
+        return assemble(headerRegion: headerRegion, valueRegion: valueRegion)
+    }
+
+    /// Encodes the entry file at a location with a new header and the value of an existing entry file.
+    ///
+    /// An encrypted file staying at its location keeps its sealed value as is, without opening it.
+    func encode(header: EntryHeader, keepingValueOf source: URL, for url: URL) throws -> Data {
+        guard let cipher, source == url else {
+            return try encode(header: header, value: decodeFile(at: source).value, for: url)
+        }
+        guard let regions = try regions(of: Data(contentsOf: source)) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return try assemble(headerRegion: sealHeader(header, with: cipher, for: url), valueRegion: regions.value)
     }
 
     /// Reads and decodes an entry file in this format or, without an encryption key, the JSON
     /// format of earlier releases.
     func decodeFile(at url: URL) throws -> EntryFile {
         let data = try Data(contentsOf: url)
-        guard let headerLength = headerRegionLength(in: data) else {
+        guard let regions = try regions(of: data) else {
             guard cipher == nil else {
                 throw CocoaError(.fileReadCorruptFile)
             }
@@ -106,13 +117,8 @@ struct EntryFileFormat {
             )
             return EntryFile(header: header, value: legacy.value, isLegacyFormat: true)
         }
-        let headerStart = data.startIndex + prefixLength
-        let headerEnd = headerStart + headerLength
-        guard data.endIndex >= headerEnd else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        let header = try decodeHeader(Data(data[headerStart ..< headerEnd]), for: url)
-        var value = Data(data[headerEnd...])
+        let header = try decodeHeader(regions.header, for: url)
+        var value = regions.value
         if let cipher {
             value = try cipher.open(value, as: .value, inFileNamed: url.lastPathComponent)
         }
@@ -135,24 +141,27 @@ struct EntryFileFormat {
         return try ScannedFile(url: url, header: decodeHeader(headerData, for: url), isLegacyFormat: false)
     }
 
-    /// Writes a header over the header region of a plaintext current-format file.
+    /// Writes a header over the header region of a file in this format, re-sealing it with a
+    /// fresh nonce when encrypting.
     ///
-    /// - Returns: `false` when the file is encrypted, isn't in the current format, or the header doesn't fit.
+    /// - Returns: `false` when the file isn't in this format or the header doesn't fit.
     func overwriteHeader(of url: URL, with header: EntryHeader) throws -> Bool {
-        guard cipher == nil else {
-            return false
-        }
         let handle = try FileHandle(forUpdating: url)
         defer { try? handle.close() }
         guard let regionLength = try headerRegionLength(in: handle.read(upToCount: prefixLength) ?? Data()) else {
             return false
         }
         let headerData = try encoder.encode(header)
-        guard headerData.count <= regionLength else {
+        let capacity = cipher == nil ? regionLength : regionLength - EntryFileCipher.overhead
+        guard headerData.count <= capacity else {
             return false
         }
+        var region = padded(headerData, to: capacity)
+        if let cipher {
+            region = try cipher.seal(region, as: .header, inFileNamed: url.lastPathComponent)
+        }
         try handle.seek(toOffset: UInt64(prefixLength))
-        try handle.write(contentsOf: padded(headerData, to: regionLength))
+        try handle.write(contentsOf: region)
         return true
     }
 
@@ -175,6 +184,20 @@ struct EntryFileFormat {
         return data.dropFirst(signature.count).prefix(MemoryLayout<UInt32>.size).reduce(0) { $0 << 8 | Int($1) }
     }
 
+    /// The header region and value region of a file in this format, or `nil` when the data
+    /// doesn't start like one.
+    private func regions(of data: Data) throws -> (header: Data, value: Data)? {
+        guard let headerLength = headerRegionLength(in: data) else {
+            return nil
+        }
+        let headerStart = data.startIndex + prefixLength
+        let headerEnd = headerStart + headerLength
+        guard data.endIndex >= headerEnd else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return (Data(data[headerStart ..< headerEnd]), Data(data[headerEnd...]))
+    }
+
     /// Decodes the header region of the entry file at a location, opening it first when encrypting.
     private func decodeHeader(_ region: Data, for url: URL) throws -> EntryHeader {
         guard let cipher else {
@@ -188,6 +211,14 @@ struct EntryFileFormat {
         let headerData = try encoder.encode(header)
         let bucketCount = (headerData.count + entryHeaderPadding + entryHeaderBucketSize - 1) / entryHeaderBucketSize
         return try cipher.seal(padded(headerData, to: bucketCount * entryHeaderBucketSize), as: .header, inFileNamed: url.lastPathComponent)
+    }
+
+    /// An entry file: the signature, the header region's length as a big-endian `UInt32`, the
+    /// header region, then the value region.
+    private func assemble(headerRegion: Data, valueRegion: Data) -> Data {
+        var data = signature
+        withUnsafeBytes(of: UInt32(headerRegion.count).bigEndian) { data.append(contentsOf: $0) }
+        return data + headerRegion + valueRegion
     }
 
     /// Data followed by spaces up to a length.

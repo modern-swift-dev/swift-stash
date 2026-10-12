@@ -2,6 +2,12 @@ import Foundation
 @testable import SwiftStash
 import Testing
 
+#if canImport(CryptoKit)
+    import CryptoKit
+#else
+    import Crypto
+#endif
+
 /// A UTF-8 serializer that counts deserializations, to observe when values are read from disk.
 private final class CountingSerializer: DiskStorageSerializer, @unchecked Sendable {
     private let lock = NSLock()
@@ -30,15 +36,20 @@ private final class CountingSerializer: DiskStorageSerializer, @unchecked Sendab
 struct LazyLoadingTests {
     private let clock = ManualClock(now: Date(timeIntervalSince1970: 1_746_364_519))
     private let directories = TestDirectories()
+    private let encryptionKey = SymmetricKey(size: .bits256)
 
     private typealias LazyCache = Cache<DiskStorageEngine<String, String, CountingSerializer>>
 
     /// Stores entries in a new directory and returns its name.
-    private func storeEntries(_ entries: [String: String], costLimit: CostLimit<String>? = nil) async -> String {
+    private func storeEntries(
+        _ entries: [String: String],
+        costLimit: CostLimit<String>? = nil,
+        encryptionKey: SymmetricKey? = nil
+    ) async -> String {
         let directory = directories.make("TestLazyLoading")
         let cache = Cache(
             policy: .fifo(threshold: 300),
-            storageEngine: DiskStorageEngine(directory: directory, serializer: CountingSerializer()),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: CountingSerializer(), encryptionKey: encryptionKey),
             clock: clock,
             costLimit: costLimit
         )
@@ -50,11 +61,12 @@ struct LazyLoadingTests {
         _ directory: String,
         serializer: CountingSerializer,
         policy: EvictionPolicy = .fifo(threshold: 300),
-        costLimit: CostLimit<String>? = nil
+        costLimit: CostLimit<String>? = nil,
+        encryptionKey: SymmetricKey? = nil
     ) -> LazyCache {
         Cache(
             policy: policy,
-            storageEngine: DiskStorageEngine(directory: directory, serializer: serializer),
+            storageEngine: DiskStorageEngine(directory: directory, serializer: serializer, encryptionKey: encryptionKey),
             clock: clock,
             costLimit: costLimit
         )
@@ -255,6 +267,132 @@ struct LazyLoadingTests {
             serializer: CountingSerializer(),
             options: [.withoutOverwriting]
         )
+        let date = Date(timeIntervalSince1970: 1000)
+        let entry = CacheEntry(key: "key", value: "value", creation: date, lastAccess: date)
+        #expect(engine.persist(entry))
+
+        var metadata = entry.metadata
+        metadata.updateLastAccess(at: date.addingTimeInterval(1))
+
+        #expect(!engine.persistMetadata(metadata))
+        #expect(engine.loadMetadata()?.first?.lastAccess == date)
+    }
+
+    // MARK: - Encrypted Entry Files
+
+    /// The only entry file in a directory.
+    private func onlyEntryFile(in directory: String) throws -> URL {
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: URL.swiftStashCacheDirectory.appendingPathComponent(directory),
+            includingPropertiesForKeys: nil
+        )
+        #expect(urls.count == 1)
+        return try #require(urls.first)
+    }
+
+    /// An encrypted entry file's sealed entry header and sealed value.
+    private func sealedRegions(of url: URL) throws -> (header: Data, value: Data) {
+        let file = try Data(contentsOf: url)
+        let headerLength = file[4 ..< 8].reduce(0) { $0 << 8 | Int($1) }
+        return (Data(file[8 ..< 8 + headerLength]), Data(file[(8 + headerLength)...]))
+    }
+
+    /// An engine encrypting entry files in a directory.
+    private func encryptedEngine(_ directory: String, options: Data.WritingOptions = [.atomic]) -> DiskStorageEngine<String, String, CountingSerializer> {
+        DiskStorageEngine(directory: directory, serializer: CountingSerializer(), options: options, encryptionKey: encryptionKey)
+    }
+
+    @Test func creatingAnEncryptedCacheDoesNotReadValues() async {
+        let directory = await storeEntries(["a": "one", "b": "two"], encryptionKey: encryptionKey)
+        let serializer = CountingSerializer()
+
+        let cache = reopen(directory, serializer: serializer, encryptionKey: encryptionKey)
+
+        #expect(await cache.count == 2)
+        #expect(serializer.deserializeCount == 0)
+        #expect(await cache["a"] == "one")
+        #expect(serializer.deserializeCount == 1)
+    }
+
+    @Test func encryptedLRUReadsReSealOnlyTheEntryHeader() async throws {
+        let directory = await storeEntries(["a": "one"], encryptionKey: encryptionKey)
+        let url = try onlyEntryFile(in: directory)
+        let before = try sealedRegions(of: url)
+        let sizeBefore = try Data(contentsOf: url).count
+        let serializer = CountingSerializer()
+        let cache = reopen(directory, serializer: serializer, policy: .lru(threshold: 300), encryptionKey: encryptionKey)
+
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+
+        #expect(serializer.serializeCount == 0)
+        #expect(try Data(contentsOf: url).count == sizeBefore)
+        let after = try sealedRegions(of: url)
+        #expect(after.value == before.value)
+        #expect(after.header != before.header)
+        let metadata = try #require(encryptedEngine(directory).loadMetadata()?.first)
+        #expect(metadata.accessCount == 2)
+        #expect(metadata.lastAccess == clock.now)
+    }
+
+    @Test func encryptedHeadersWithoutRoomAreRewrittenAroundTheSealedValue() async throws {
+        let directory = directories.make("TestEncryptedHeaderWithoutRoom")
+        #expect(encryptedEngine(directory).persist(CacheEntry(key: "a", value: "one", creation: clock.now, lastAccess: clock.now, accessCount: 9)))
+        let url = try onlyEntryFile(in: directory)
+        // Re-seal the entry header without padding, so the next access count (10) doesn't fit.
+        let cipher = EntryFileCipher(encryptionKey: encryptionKey)
+        let regions = try sealedRegions(of: url)
+        var header = try cipher.open(regions.header, as: .header, inFileNamed: url.lastPathComponent)
+        while header.last == UInt8(ascii: " ") {
+            header.removeLast()
+        }
+        let compactHeader = try cipher.seal(header, as: .header, inFileNamed: url.lastPathComponent)
+        var compact = Data("SSC1".utf8)
+        withUnsafeBytes(of: UInt32(compactHeader.count).bigEndian) { compact.append(contentsOf: $0) }
+        try (compact + compactHeader + regions.value).write(to: url)
+        let serializer = CountingSerializer()
+        let cache = reopen(directory, serializer: serializer, policy: .lru(threshold: 300), encryptionKey: encryptionKey)
+
+        clock.advance(by: 5)
+        #expect(await cache["a"] == "one")
+
+        #expect(serializer.serializeCount == 0)
+        #expect(try sealedRegions(of: url).value == regions.value)
+        let reopened = encryptedEngine(directory)
+        let metadata = try #require(reopened.loadMetadata()?.first)
+        #expect(metadata.accessCount == 10)
+        #expect(metadata.lastAccess == clock.now)
+        #expect(reopened.loadValue(for: "a") == "one")
+    }
+
+    @Test func reSealingAnEntryHeaderUsesAFreshNonce() throws {
+        let directory = directories.make("TestEncryptedFreshNonce")
+        let engine = encryptedEngine(directory)
+        let entry = CacheEntry(key: "a", value: "one", creation: clock.now, lastAccess: clock.now)
+        #expect(engine.persist(entry))
+        let url = try onlyEntryFile(in: directory)
+        let before = try sealedRegions(of: url)
+
+        #expect(engine.persistMetadata(entry.metadata))
+
+        let after = try sealedRegions(of: url)
+        #expect(after.header.count == before.header.count)
+        #expect(after.header.prefix(12) != before.header.prefix(12))
+        #expect(after.value == before.value)
+    }
+
+    @Test func encryptedPersistMetadataFailsWithoutAnEntryFile() {
+        let date = Date(timeIntervalSince1970: 1000)
+
+        #expect(!encryptedEngine(directories.make("TestEncryptedMissingMetadata")).persistMetadata(
+            CacheEntryMetadata(key: "missing", creation: date, lastAccess: date)
+        ))
+    }
+
+    @Test func encryptedPersistMetadataRespectsWithoutOverwriting() {
+        let engine = encryptedEngine(directories.make("TestEncryptedMetadataWithoutOverwriting"), options: [.withoutOverwriting])
         let date = Date(timeIntervalSince1970: 1000)
         let entry = CacheEntry(key: "key", value: "value", creation: date, lastAccess: date)
         #expect(engine.persist(entry))
